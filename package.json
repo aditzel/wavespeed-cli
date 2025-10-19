@@ -1,0 +1,23 @@
+{
+  "name": "wavespeed-cli",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "CLI for Wavespeed AI Bytedance Seedream V4 API",
+  "bin": {
+    "wavespeed": "dist/index.js"
+  },
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target bun --format esm && chmod +x dist/index.js",
+    "dev": "bun run --hot src/index.ts"
+  },
+  "dependencies": {
+    "commander": "^14.0.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^24.8.1",
+    "bun-types": "^1.3.0",
+    "typescript": "^5.9.3"
+  }
+}
