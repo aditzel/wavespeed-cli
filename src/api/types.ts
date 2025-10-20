@@ -20,11 +20,13 @@ export interface ApiEnvelope {
 export interface GenerateRequest {
   prompt: string;
   size?: string;
-  base64?: boolean;
+  enable_base64_output?: boolean;
+  enable_sync_mode?: boolean;
 }
 
 export interface EditRequest extends GenerateRequest {
   images: string[];
+  enable_sync_mode?: boolean;
 }
 
 export interface SequentialGenerateRequest extends GenerateRequest {

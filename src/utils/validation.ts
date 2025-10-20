@@ -1,3 +1,5 @@
+import { fileExists, convertFileToBase64, isUrl } from "./images.ts";
+
 export function ensurePrompt(p: unknown): string {
   const s = String(p ?? "").trim();
   if (!s) throw new Error("Prompt is required");
@@ -5,7 +7,13 @@ export function ensurePrompt(p: unknown): string {
 }
 
 export function parseSize(input: unknown, defaultSize = "2048*2048"): string {
-  const raw = String(input ?? defaultSize).trim();
+  let raw: string;
+  if (input === null || input === undefined || input === "") {
+    raw = defaultSize;
+  } else {
+    raw = String(input).trim();
+  }
+  
   const cleaned = raw.replace(/x/gi, "*");
   const parts = cleaned.split("*").map((v) => parseInt(v, 10));
   if (parts.length !== 2 || parts.some((n) => Number.isNaN(n))) {
@@ -18,7 +26,7 @@ export function parseSize(input: unknown, defaultSize = "2048*2048"): string {
   return `${w}*${h}`;
 }
 
-export function parseImagesList(arg: unknown, required: boolean, max = 10): string[] {
+export async function parseImagesList(arg: unknown, required: boolean, max = 10): Promise<string[]> {
   const s = String(arg ?? "").trim();
   if (!s && required) throw new Error("Images are required");
   if (!s) return [];
@@ -26,14 +34,30 @@ export function parseImagesList(arg: unknown, required: boolean, max = 10): stri
   if (items.length > max) {
     throw new Error(`At most ${max} images are allowed`);
   }
-  const urls = items.map((u) => {
-    try {
-      return new URL(u).toString();
-    } catch {
-      throw new Error(`Invalid image URL: ${u}`);
+  
+  const processedItems: string[] = [];
+  
+  for (const item of items) {
+    if (isUrl(item)) {
+      // Validate URL
+      try {
+        new URL(item);
+        processedItems.push(item);
+      } catch {
+        throw new Error(`Invalid image URL: ${item}`);
+      }
+    } else {
+      // Treat as file path
+      if (!(await fileExists(item))) {
+        throw new Error(`Image file not found: ${item}`);
+      }
+      // Convert to base64 with data URI
+      const base64 = await convertFileToBase64(item);
+      processedItems.push(`data:image/jpeg;base64,${base64}`);
     }
-  });
-  return urls;
+  }
+  
+  return processedItems;
 }
 
 export function parseMaxImages(input: unknown, defaultVal = 1): number {
