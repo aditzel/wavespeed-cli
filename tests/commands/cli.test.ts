@@ -31,7 +31,7 @@ describe("CLI Integration Tests", () => {
       const result = await runCLI(["--help"]);
       
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("Wavespeed CLI for Bytedance Seedream V4 models");
+      expect(result.stdout).toContain("Wavespeed AI CLI - Generate and Edit Images");
       expect(result.stdout).toContain("generate");
       expect(result.stdout).toContain("edit");
       expect(result.stdout).toContain("generate-sequential");
@@ -49,7 +49,7 @@ describe("CLI Integration Tests", () => {
       expect(result.stdout).toContain("--sync");
       expect(result.stdout).toContain("--base64");
       expect(result.stdout).toContain("URLs or file paths");
-      expect(result.stdout).toContain("automatically converted to base64");
+      expect(result.stdout).toContain("Request base64 outputs");
     });
 
     it("should show generate command help", async () => {
@@ -60,7 +60,7 @@ describe("CLI Integration Tests", () => {
       expect(result.stdout).toContain("--prompt");
       expect(result.stdout).toContain("--size");
       expect(result.stdout).toContain("--sync");
-      expect(result.stdout).toContain("synchronous processing");
+      expect(result.stdout).toContain("Enable synchronous mode");
     });
   });
 
