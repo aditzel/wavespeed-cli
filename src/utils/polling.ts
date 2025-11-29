@@ -1,40 +1,33 @@
-import { getResult } from "../api/client.ts";
 import { TaskData } from "../api/types.ts";
+import { getResult } from "../api/client.ts";
 
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
+const DEFAULT_POLL_INTERVAL_MS = 2000;
+const MAX_POLL_DURATION_MS = 10 * 60 * 1000; // 10 minutes
 
-export interface PollOptions {
-  intervalMs?: number;
-  timeoutMs?: number;
-  maxNetworkRetries?: number;
-}
-
-export async function pollUntilDone(id: string, opts: PollOptions = {}): Promise<TaskData> {
-  const interval = opts.intervalMs ?? 2500;
-  const timeout = opts.timeoutMs ?? 10 * 60 * 1000;
-  const maxNetRetries = opts.maxNetworkRetries ?? 3;
-
+// Model-agnostic polling helper. The API client is responsible for using the
+// correct base URL and authentication for getResult.
+export async function pollUntilDone(
+  requestId: string,
+  intervalMs: number = DEFAULT_POLL_INTERVAL_MS,
+  maxDurationMs: number = MAX_POLL_DURATION_MS
+): Promise<TaskData> {
   const start = Date.now();
-  let netErrors = 0;
 
-  for (;;) {
-    if (Date.now() - start > timeout) {
-      throw new Error("Polling timed out");
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const now = Date.now();
+    if (now - start > maxDurationMs) {
+      throw new Error(
+        `Polling timed out after ${maxDurationMs}ms for request ${requestId}`
+      );
     }
-    try {
-      const data = await getResult(id);
-      if (data.status === "completed" || data.status === "failed") {
-        return data;
-      }
-      await sleep(interval);
-      netErrors = 0;
-    } catch (err) {
-      netErrors += 1;
-      if (netErrors > maxNetRetries) throw err;
-      const backoff = interval * Math.min(4, netErrors);
-      await sleep(backoff);
+
+    const data = await getResult(requestId);
+
+    if (data.status === "succeeded" || data.status === "failed") {
+      return data;
     }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
 }

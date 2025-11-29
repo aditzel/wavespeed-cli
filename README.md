@@ -10,6 +10,7 @@ A TypeScript CLI for the Wavespeed AI Bytedance Seedream V4 API, built with Bun.
 - **Sequential Editing**: Edit images while maintaining consistency
 - **Auto-Download**: Images are automatically downloaded when generation completes
 - **Base64 Support**: Decode and save base64-encoded image outputs
+- **Config-driven multi-model support**: Select between multiple providers/models via config
 
 ## API Documentation
 
@@ -44,9 +45,11 @@ bun link
 
 ## Configuration
 
-### Environment Variable
+### Environment Variable (default behavior)
 
-The CLI requires the `WAVESPEED_API_KEY` environment variable.
+By default, the CLI uses the built-in Wavespeed Seedream V4 configuration. You only need:
+
+- `WAVESPEED_API_KEY` set in your environment.
 
 For Fish shell users:
 
@@ -70,6 +73,124 @@ export WAVESPEED_API_KEY="your_api_key_here"
 # Reload
 source ~/.bashrc  # or source ~/.zshrc
 ```
+
+If no config file is present, all commands:
+- Use `https://api.wavespeed.ai`
+- Use `WAVESPEED_API_KEY`
+- Target the Bytedance Seedream V4 endpoints
+This preserves backward compatibility.
+
+### Config file discovery (multi-model support)
+
+To use multiple models/providers or override defaults, create a config file. On each run, the CLI looks for the first existing file (no merging):
+
+Project-level (current directory):
+
+1. `.wavespeedrc`
+2. `.wavespeedrc.json`
+3. `.wavespeedrc.yaml`
+4. `.wavespeedrc.yml`
+5. `wavespeed.config.json`
+6. `wavespeed.config.yaml`
+7. `wavespeed.config.yml`
+
+If none found, fall back to home directory:
+
+8. `$HOME/.wavespeedrc`
+9. `$HOME/.wavespeedrc.json`
+10. `$HOME/.wavespeedrc.yaml`
+11. `$HOME/.wavespeedrc.yml`
+
+The first match wins. Supported formats:
+- JSON
+- YAML
+- `.wavespeedrc` without extension: tries JSON, then YAML.
+
+### Config schema (overview)
+
+Minimal JSON example:
+
+```json
+{
+  "models": {
+    "seedream-v4": {
+      "provider": "wavespeed",
+      "apiBaseUrl": "https://api.wavespeed.ai",
+      "apiKeyEnv": "WAVESPEED_API_KEY",
+      "modelName": "bytedance/seedream-v4"
+    },
+    "my-alt-model": {
+      "provider": "openai-compatible",
+      "apiBaseUrl": "https://api.my-gateway.example",
+      "apiKeyEnv": "MY_GATEWAY_API_KEY",
+      "modelName": "bytedance/seedream-v4"
+    }
+  },
+  "defaults": {
+    "globalModel": "seedream-v4",
+    "commands": {
+      "generate": "seedream-v4",
+      "edit": "seedream-v4",
+      "generate-sequential": "seedream-v4",
+      "edit-sequential": "seedream-v4"
+    }
+  }
+}
+```
+
+Key points:
+
+- `models`:
+  - Keys are model ids used with `--model <id>`.
+  - Each model:
+    - `provider`: `"wavespeed" | "openai" | "openai-compatible" | "custom"`.
+    - `apiBaseUrl`:
+      - Optional for `wavespeed` (defaults to `https://api.wavespeed.ai`).
+      - Required for non-`wavespeed` providers.
+    - `apiKeyEnv`:
+      - Environment variable name holding the API key.
+      - Defaults to `WAVESPEED_API_KEY` for `wavespeed` if omitted.
+    - `modelName`:
+      - Remote model identifier (e.g. `"bytedance/seedream-v4"`).
+    - `type`, `requestDefaults`:
+      - Optional and currently not required by core commands.
+- `defaults`:
+  - `globalModel`:
+    - Default model id when no command-level default applies.
+  - `commands`:
+    - Per-command defaults (model ids) for:
+      - `generate`, `edit`, `generate-sequential`, `edit-sequential`.
+
+Unknown fields are ignored by the loader to remain forward-compatible.
+
+### Environment variable interpolation
+
+In the config, any string exactly matching one of:
+
+- `${ENV:NAME}`
+- `${NAME}`
+
+is resolved as:
+
+- `process.env.NAME` if defined.
+- If not defined:
+  - Left as an empty string; resolution/validation logic will fail later if that field is required for the chosen model.
+
+Example:
+
+```json
+{
+  "models": {
+    "gateway": {
+      "provider": "openai-compatible",
+      "apiBaseUrl": "${GATEWAY_BASE_URL}",
+      "apiKeyEnv": "GATEWAY_API_KEY"
+    }
+  }
+}
+```
+
+If `GATEWAY_BASE_URL` or `GATEWAY_API_KEY` are missing at runtime when this model is selected, the CLI exits with a configuration/secret error as described below.
 
 ## Usage
 
@@ -143,52 +264,127 @@ wavespeed edit-sequential \
 - `-s, --size <WIDTHxHEIGHT>`: Image dimensions (default: 2048*2048)
   - Minimum: 1024x1024
   - Maximum: 4096x4096
-  - Format accepts both `*` and `x` as separators
-- `-o, --output-dir <dir>`: Directory to save downloaded images (default: `./output/`)
-- `--base64`: Request base64-encoded images from API (auto-decoded and saved as PNG)
+  - Accepts `*` or `x` as separator
+- `-o, --output-dir <dir>`: Directory to save images (default: `./output/`)
+- `--base64`: Request base64-encoded images (auto-decoded and saved as PNG)
 
 For edit commands:
+
 - `-i, --images <urls>`: Comma-separated image URLs (max 10)
 
 For sequential commands:
+
 - `-m, --max-images <number>`: Number of images to generate (1-15, default: 1)
 
 ### Output Behavior
 
-- **Auto-download**: Images are automatically downloaded when generation completes
-- **File naming**: Saved as `{taskId}_1.png`, `{taskId}_2.png`, etc.
-- **Output directory**: Default is `./output/`, configurable with `--output-dir`
-- **Base64 handling**: Base64 outputs are automatically decoded and saved as PNG files
+- Images auto-downloaded on completion.
+- Files named like `{taskId}_1.png`, `{taskId}_2.png`, etc.
+- Default output dir: `./output/`, configurable with `--output-dir`.
+- Base64 outputs auto-decoded and saved.
 
-## Image Size Guidelines
+## Multi-model selection
 
-The API supports resolutions from 1024x1024 to 4096x4096.
+Model selection for each command follows:
 
-**Recommended resolutions** (by aspect ratio):
-- **1:1** - 2048×2048, 3072×3072, 4096×4096
-- **16:9** - 2048×1152, 3072×1728, 4096×2304
-- **4:3** - 2048×1536, 3072×2304, 4096×3072  
-- **9:16** - 1152×2048, 1728×3072, 2304×4096
-- **3:4** - 1536×2048, 2304×3072, 3072×4096
+1. CLI flag `--model <id>`:
+   - Must match a model defined in `models`.
+   - If unknown: configuration error (exit code 3).
+2. Command-level default:
+   - `defaults.commands[commandName]` if present.
+3. Global default:
+   - `defaults.globalModel` if present.
+4. Built-in fallback:
+   - Wavespeed Seedream V4 using `WAVESPEED_API_KEY`.
+   - If `WAVESPEED_API_KEY` is missing here: exit code 2.
 
-## Error Handling
+This behavior is implemented centrally and used by all commands.
 
-The CLI validates inputs and provides clear error messages:
+Examples:
 
-- **Missing prompt**: `Prompt is required`
-- **Invalid size**: `Size must be WIDTH*HEIGHT, for example 2048*2048`
-- **Size out of range**: `Each size dimension must be between 1024 and 4096`
-- **Too many images**: `At most 10 images are allowed`
-- **Invalid image URL**: `Invalid image URL: <url>`
-- **Invalid max-images**: `max-images must be an integer between 1 and 15`
-- **Missing API key**: Instructions for setting `WAVESPEED_API_KEY`
-- **API errors**: HTTP status and error message from the API
-- **Task failures**: Displays the error from the failed task
+```bash
+# Use default / configured resolution
+wavespeed generate --prompt "A cat in space"
 
-Exit codes:
+# Use a specific configured model for one run
+wavespeed generate --model my-alt-model --prompt "A dragon in neon lights"
+
+# Global model override via config only
+wavespeed edit --prompt "style it" --images "https://example.com/img.png"
+```
+
+## Listing configured models
+
+The CLI provides global flags:
+
+```bash
+wavespeed --list-models
+wavespeed --list-models-json
+```
+
+Behavior:
+
+- When either flag is present:
+  - The CLI lists models and exits with code 0.
+  - If used alongside a subcommand, the listing still runs and the command is not executed.
+
+Text output example:
+
+```text
+Config source: /path/to/.wavespeedrc.json
+seedream-v4 * [cmd=generate,edit] provider=wavespeed baseUrl=https://api.wavespeed.ai modelName=bytedance/seedream-v4 keyEnv=WAVESPEED_API_KEY
+my-alt-model [cmd=generate] provider=openai-compatible baseUrl=https://api.my-gateway.example modelName=bytedance/seedream-v4 keyEnv=MY_GATEWAY_API_KEY
+```
+
+- `*` marks the global default model.
+- `[cmd=...]` lists commands for which this model is the default.
+
+JSON output example:
+
+```bash
+wavespeed --list-models-json
+```
+
+```json
+{
+  "source": "/path/to/.wavespeedrc.json",
+  "models": [
+    {
+      "id": "seedream-v4",
+      "provider": "wavespeed",
+      "apiBaseUrl": "https://api.wavespeed.ai",
+      "modelName": "bytedance/seedream-v4",
+      "apiKeyEnv": "WAVESPEED_API_KEY",
+      "isDefaultGlobal": true,
+      "defaultForCommands": ["generate", "edit"]
+    }
+  ]
+}
+```
+
+If no config file is present:
+- Listing shows a single built-in Seedream V4 model as the global default.
+
+## Error Handling and Exit Codes
+
+The CLI validates inputs and configuration and returns:
+
 - `0`: Success
-- `1`: Command error (validation, API error, task failed)
-- `2`: Missing API key
+- `1`: Command usage/validation/runtime/API error (e.g., invalid args, task failure)
+- `2`: Missing required secrets (e.g., required API key env var not set for selected model)
+- `3`: Configuration/model errors:
+  - Invalid JSON/YAML in config
+  - Unknown model id referenced in `defaults` or `--model`
+  - Missing required `apiBaseUrl`/`apiKeyEnv` for chosen model
+
+Typical messages include guidance such as:
+
+- Unknown model:
+  - "Unknown model 'X'. Use --list-models to see available models."
+- Invalid config defaults:
+  - "defaults.globalModel 'X' does not exist in models"
+- Missing secrets:
+  - "Environment variable 'NAME' is not set for model 'id'."
 
 ## Development
 
@@ -198,63 +394,41 @@ bun run dev
 
 # Build for production
 bun run build
-
-# The build automatically makes dist/index.js executable
 ```
 
 ### Testing
-
-The CLI includes a comprehensive test suite to ensure correctness and reliability.
 
 ```bash
 # Run all tests
 bun test
 
-# Run tests in watch mode
-bun test:watch
-
-# Run tests with coverage (if implemented)  
-bun test:coverage
+# (Optional helpers if added)
+# bun test:watch
+# bun test:coverage
 ```
 
-**Test Coverage:**
-- ✅ Input validation (prompts, sizes, image URLs/files)
-- ✅ Local file upload and base64 conversion
-- ✅ API client functionality and error handling
-- ✅ CLI integration and command-line parsing
-- ✅ Image download and saving utilities
+Test coverage includes:
 
-**Key Features Tested:**
-- **Sync Mode Support**: `--sync` option available in all commands
-- **File Upload**: Local image files auto-converted to base64 data URIs  
-- **Mixed Input**: Handles both URLs and local files in same command
-- **Validation**: Comprehensive input validation and error messages
-- **API Compliance**: Matches Wavespeed API specification exactly
-
-See [TESTING.md](TESTING.md) for detailed testing documentation.
-
-### Implementation Verification
-
-The current implementation correctly addresses the API requirements:
-
-✅ **Missing `enable_sync_mode` parameter** - Added to all commands  
-✅ **Local file upload support** - Auto-detection and base64 conversion  
-✅ **API parameter compliance** - All documented parameters supported  
-✅ **Input validation** - Proper error handling and constraints  
-✅ **Image handling** - Both URLs and local files supported
+- Input validation (prompts, sizes, image URLs/files)
+- Local file upload and base64 conversion
+- API client behavior and error handling
+- CLI integration and parsing
+- Image download and saving utilities
+- Config loading and model resolution
+- Multi-model selection and listing flags
 
 ## Pricing
 
 From the API documentation:
-- **Standard generation**: $0.027 per image
-- **Sequential generation**: $0.027 × `max_images`
+
+- Standard generation: $0.027 per image
+- Sequential generation: $0.027 × `max_images`
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details
+MIT License - see `LICENSE` for details.
 
 ## Support
 
-For API-related issues, refer to the [Wavespeed API Documentation](https://wavespeed.ai/docs).
-
-For CLI issues, please open an issue on GitHub.
+- For API issues: see Wavespeed API documentation.
+- For CLI issues: open an issue on GitHub.

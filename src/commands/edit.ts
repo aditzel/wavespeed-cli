@@ -1,9 +1,15 @@
 import { Command } from "commander";
 import { submitTask, endpoints } from "../api/client.ts";
 import { pollUntilDone } from "../utils/polling.ts";
-import { ensurePrompt, parseSize, parseImagesList } from "../utils/validation.ts";
+import {
+  ensurePrompt,
+  parseSize,
+  parseImagesList,
+} from "../utils/validation.ts";
 import { TaskData } from "../api/types.ts";
 import { saveImagesFromOutputs } from "../utils/images.ts";
+import { loadConfig } from "../config/load";
+import { resolveModel, ConfigError } from "../config/models";
 
 function printResult(d: TaskData, base64: boolean) {
   console.log("Task ID:", d.id);
@@ -29,21 +35,28 @@ export function registerEdit(program: Command) {
     .command("edit")
     .description("Image editing")
     .option("-p, --prompt [value]", "Prompt text")
-    .option("-i, --images [value]", "Comma separated image URLs or file paths, max 10")
-    .option("-s, --size [value]", "Image size WIDTH*HEIGHT, default 2048*2048")
-    .option("-o, --output-dir <dir>", "Directory to save downloaded images (default: ./output/)", "./output/")
-    .option("--base64", "Request base64 outputs from API (auto-decoded and saved)")
-    .option("--sync", "Enable synchronous mode (wait for result before returning)")
-    .addHelpText("after", `
-Notes:
-  - Images can be URLs or local file paths (auto-detected).
-  - Local files are automatically converted to base64 and uploaded.
-  - Images are automatically downloaded when the task completes.
-  - Files are saved to --output-dir as {taskId}_1.png, {taskId}_2.png, etc.
-  - Use --base64 to request base64 outputs; the CLI will decode and save them as .png files.
-  - Use --sync for synchronous processing (waits for completion before returning).
-`)
-    .action(async (opts) => {
+    .option(
+      "-i, --images [value]",
+      "Comma separated image URLs or file paths, max 10"
+    )
+    .option(
+      "-s, --size [value]",
+      "Image size WIDTH*HEIGHT, default 2048*2048"
+    )
+    .option(
+      "-o, --output-dir <dir>",
+      "Directory to save downloaded images (default: ./output/)",
+      "./output/"
+    )
+    .option(
+      "--base64",
+      "Request base64 outputs from API (auto-decoded and saved)"
+    )
+    .option(
+      "--sync",
+      "Enable synchronous mode (wait for result before returning)"
+    )
+    .action(async (opts, command) => {
       try {
         const prompt = ensurePrompt(opts.prompt);
         const images = await parseImagesList(opts.images, true, 10);
@@ -52,14 +65,25 @@ Notes:
         const syncMode = Boolean(opts.sync);
         const outputDir = opts.outputDir;
 
-        const payload = { 
-          prompt, 
-          images, 
-          size, 
+        const rootOpts =
+          command.parent && typeof command.parent.opts === "function"
+            ? command.parent.opts()
+            : {};
+        const cliModelFlag = opts.model ?? rootOpts.model;
+
+        const { config } = loadConfig();
+        const model = resolveModel("edit", cliModelFlag, config);
+
+        const payload = {
+          prompt,
+          images,
+          size,
           enable_base64_output: base64,
-          enable_sync_mode: syncMode
+          enable_sync_mode: syncMode,
+          model: model.modelName ?? model.id,
         };
-        const created = await submitTask(endpoints.edit, payload);
+
+        const created = await submitTask(model, endpoints.edit, payload);
 
         const final = await pollUntilDone(created.id);
         if (final.status === "failed") {
@@ -67,23 +91,32 @@ Notes:
         }
         printResult(final, base64);
 
-        // Download and save images
         const outputs = final.outputs || [];
         if (!outputs.length) {
           console.warn("No images were returned by the API.");
         } else {
-          const { savedPaths, failed } = await saveImagesFromOutputs(outputs, outputDir, final.id);
+          const { savedPaths, failed } = await saveImagesFromOutputs(
+            outputs,
+            outputDir,
+            final.id
+          );
           console.log("\nSaved files:");
-          savedPaths.forEach(p => console.log(`  ${p}`));
+          savedPaths.forEach((p) => console.log(`  ${p}`));
           if (failed.length) {
             console.warn(`\nFailed to save ${failed.length} image(s):`);
-            failed.forEach(f => console.warn(`  #${f.index + 1}: ${f.reason}`));
+            failed.forEach((f) =>
+              console.warn(`  #${f.index + 1}: ${f.reason}`)
+            );
           }
           if (!savedPaths.length) {
             process.exit(1);
           }
         }
       } catch (err: any) {
+        if (err instanceof ConfigError) {
+          console.error(err.message);
+          process.exit(err.exitCode);
+        }
         console.error("edit error:", err?.message ?? err);
         process.exit(1);
       }

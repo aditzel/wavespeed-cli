@@ -1,21 +1,16 @@
-import { BASE_URL, endpoints, TaskData, ApiEnvelope } from "./types.ts";
+import { endpoints, TaskData, ApiEnvelope } from "./types.ts";
+import { ResolvedModel } from "../config/types";
 
-function getApiKey(): string {
-  const key = process.env.WAVESPEED_API_KEY;
-  if (!key) {
-    console.error("Missing WAVESPEED_API_KEY environment variable.");
-    console.error("In fish, ensure it is exported globally, for example:");
-    console.error('set -Ux WAVESPEED_API_KEY "your_api_key"');
-    process.exit(2);
-  }
-  return key;
-}
-
-async function httpJson(method: string, url: string, body?: unknown): Promise<any> {
-  const res = await fetch(`${BASE_URL}${url}`, {
+async function httpJson(
+  method: string,
+  model: ResolvedModel,
+  url: string,
+  body?: unknown
+): Promise<any> {
+  const res = await fetch(`${model.apiBaseUrl}${url}`, {
     method,
     headers: {
-      Authorization: `Bearer ${getApiKey()}`,
+      Authorization: `Bearer ${model.apiKey}`,
       "Content-Type": "application/json",
       Accept: "application/json",
     },
@@ -42,12 +37,49 @@ async function httpJson(method: string, url: string, body?: unknown): Promise<an
   return json as TaskData;
 }
 
-export async function submitTask(path: string, payload: unknown): Promise<TaskData> {
-  return httpJson("POST", path, payload);
+export async function submitTask(
+  model: ResolvedModel,
+  path: string,
+  payload: unknown
+): Promise<TaskData> {
+  return httpJson("POST", model, path, payload);
 }
 
-export async function getResult(requestId: string): Promise<TaskData> {
-  return httpJson("GET", endpoints.result(requestId));
+export async function getResult(
+  model: ResolvedModel,
+  requestId: string
+): Promise<TaskData> {
+  return httpJson("GET", model, endpoints.result(requestId));
+}
+
+export async function getModels(apiKey: string): Promise<any[]> {
+  // This endpoint is global, not tied to a specific model config
+  // We use the default Wavespeed API base URL
+  const url = `https://api.wavespeed.ai${endpoints.models}`;
+  
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: "application/json",
+      },
+    });
+
+    if (!res.ok) {
+       const text = await res.text();
+       throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+
+    const json = await res.json();
+    // The API returns { code: 200, data: [...] }
+    if (json && Array.isArray(json.data)) {
+      return json.data;
+    }
+    return [];
+  } catch (err) {
+    throw new Error(`Failed to fetch models: ${(err as Error).message}`);
+  }
 }
 
 export { endpoints };
