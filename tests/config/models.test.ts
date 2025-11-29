@@ -1,26 +1,20 @@
-import { describe, it, expect, beforeEach } from "bun:test";
-import {
-  WavespeedConfig,
-  ResolvedModelSummary,
-} from "../../src/config/types.ts";
-import {
-  resolveModel,
-  listModels,
-  ConfigError,
-} from "../../src/config/models.ts";
+import { beforeEach, describe, expect, it } from "bun:test";
+import { ConfigError, listModels, resolveModel } from "../../src/config/models.ts";
+import type { ResolvedModelSummary, WavespeedConfig } from "../../src/config/types.ts";
 
 function makeConfig(partial: Partial<WavespeedConfig>): WavespeedConfig {
+  const baseModels = partial.models || {};
+  const baseDefaults = partial.defaults || {};
+
   return {
     version: "1",
-    models: {},
-    defaults: {},
     env: {},
     ...partial,
     models: {
-      ...(partial.models || {}),
+      ...baseModels,
     },
     defaults: {
-      ...(partial.defaults || {}),
+      ...baseDefaults,
     },
   };
 }
@@ -321,15 +315,20 @@ describe("config/models.listModels", () => {
     expect(source).toBe("/tmp/config.json");
     expect(models.length).toBe(2);
 
-    const a = models.find((m) => m.id === "a")!;
-    const b = models.find((m) => m.id === "b")!;
+    const a = models.find((m) => m.id === "a");
+    const b = models.find((m) => m.id === "b");
 
-    expect(a.isDefaultGlobal).toBe(true);
-    expect(a.defaultForCommands).toEqual([]);
-    expect(a.apiBaseUrl).toBe("https://api.wavespeed.ai");
+    expect(a).toBeDefined();
+    expect(b).toBeDefined();
 
-    expect(b.isDefaultGlobal).toBe(false);
-    expect(b.defaultForCommands).toContain("generate");
-    expect(b.apiBaseUrl).toBe("https://alt");
+    if (a && b) {
+      expect(a.isDefaultGlobal).toBe(true);
+      expect(a.defaultForCommands).toEqual([]);
+      expect(a.apiBaseUrl).toBe("https://api.wavespeed.ai");
+
+      expect(b.isDefaultGlobal).toBe(false);
+      expect(b.defaultForCommands).toContain("generate");
+      expect(b.apiBaseUrl).toBe("https://alt");
+    }
   });
 });

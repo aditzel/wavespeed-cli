@@ -1,7 +1,12 @@
-import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { ensurePrompt, parseSize, parseImagesList, parseMaxImages } from "../../src/utils/validation.ts";
-import { mkdir, writeFile, rm } from "node:fs/promises";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  ensurePrompt,
+  parseImagesList,
+  parseMaxImages,
+  parseSize,
+} from "../../src/utils/validation.ts";
 
 describe("Validation Utils", () => {
   const testDir = path.join(import.meta.dir, "../fixtures");
@@ -11,15 +16,11 @@ describe("Validation Utils", () => {
     await mkdir(testDir, { recursive: true });
     // Create a minimal PNG for testing
     const pngData = new Uint8Array([
-      0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-      0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
-      0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-      0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53, 0xDE,
-      0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41, 0x54,
-      0x08, 0x99, 0x01, 0x01, 0x00, 0x00, 0x00, 0xFF,
-      0xFF, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01,
-      0xE2, 0x21, 0xBC, 0x33, 0x00, 0x00, 0x00, 0x00,
-      0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
+      0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90,
+      0x77, 0x53, 0xde, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, 0x54, 0x08, 0x99, 0x01, 0x01,
+      0x00, 0x00, 0x00, 0xff, 0xff, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0xe2, 0x21, 0xbc, 0x33,
+      0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
     ]);
     await writeFile(testImagePath, pngData);
   });
@@ -69,10 +70,18 @@ describe("Validation Utils", () => {
     });
 
     it("should reject sizes outside valid range", () => {
-      expect(() => parseSize("512*1024")).toThrow("Each size dimension must be between 1024 and 4096");
-      expect(() => parseSize("1024*512")).toThrow("Each size dimension must be between 1024 and 4096");
-      expect(() => parseSize("5000*2048")).toThrow("Each size dimension must be between 1024 and 4096");
-      expect(() => parseSize("2048*5000")).toThrow("Each size dimension must be between 1024 and 4096");
+      expect(() => parseSize("512*1024")).toThrow(
+        "Each size dimension must be between 1024 and 4096",
+      );
+      expect(() => parseSize("1024*512")).toThrow(
+        "Each size dimension must be between 1024 and 4096",
+      );
+      expect(() => parseSize("5000*2048")).toThrow(
+        "Each size dimension must be between 1024 and 4096",
+      );
+      expect(() => parseSize("2048*5000")).toThrow(
+        "Each size dimension must be between 1024 and 4096",
+      );
     });
   });
 
@@ -80,10 +89,7 @@ describe("Validation Utils", () => {
     it("should handle valid URLs", async () => {
       const urls = "https://example.com/image1.jpg,https://example.com/image2.png";
       const result = await parseImagesList(urls, true, 10);
-      expect(result).toEqual([
-        "https://example.com/image1.jpg",
-        "https://example.com/image2.png"
-      ]);
+      expect(result).toEqual(["https://example.com/image1.jpg", "https://example.com/image2.png"]);
     });
 
     it("should handle local file paths", async () => {
@@ -110,16 +116,24 @@ describe("Validation Utils", () => {
     });
 
     it("should throw when file doesn't exist", async () => {
-      await expect(parseImagesList("nonexistent.jpg", true, 10)).rejects.toThrow("Image file not found");
+      await expect(parseImagesList("nonexistent.jpg", true, 10)).rejects.toThrow(
+        "Image file not found",
+      );
     });
 
     it("should throw when invalid URL provided", async () => {
-      await expect(parseImagesList("not-a-url-or-file", true, 10)).rejects.toThrow("Image file not found");
+      await expect(parseImagesList("not-a-url-or-file", true, 10)).rejects.toThrow(
+        "Image file not found",
+      );
     });
 
     it("should enforce max image limit", async () => {
-      const urls = Array.from({ length: 11 }, (_, i) => `https://example.com/image${i}.jpg`).join(",");
-      await expect(parseImagesList(urls, true, 10)).rejects.toThrow("At most 10 images are allowed");
+      const urls = Array.from({ length: 11 }, (_, i) => `https://example.com/image${i}.jpg`).join(
+        ",",
+      );
+      await expect(parseImagesList(urls, true, 10)).rejects.toThrow(
+        "At most 10 images are allowed",
+      );
     });
   });
 
@@ -141,7 +155,9 @@ describe("Validation Utils", () => {
       expect(() => parseMaxImages(0)).toThrow("max-images must be an integer between 1 and 15");
       expect(() => parseMaxImages(16)).toThrow("max-images must be an integer between 1 and 15");
       expect(() => parseMaxImages(-1)).toThrow("max-images must be an integer between 1 and 15");
-      expect(() => parseMaxImages("invalid")).toThrow("max-images must be an integer between 1 and 15");
+      expect(() => parseMaxImages("invalid")).toThrow(
+        "max-images must be an integer between 1 and 15",
+      );
       expect(() => parseMaxImages(3.14)).toThrow("max-images must be an integer between 1 and 15");
     });
   });

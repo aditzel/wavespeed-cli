@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach } from "bun:test";
-import fs from "fs";
-import os from "os";
-import path from "path";
-import { loadConfig, ConfigError } from "../../src/config/load.ts";
-import { WavespeedConfig } from "../../src/config/types.ts";
+import { beforeEach, describe, expect, it } from "bun:test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { ConfigError, loadConfig } from "../../src/config/load.ts";
+import type { WavespeedConfig } from "../../src/config/types.ts";
 
 const ORIGINAL_CWD = process.cwd();
 const TMP_ROOT = path.join(os.tmpdir(), "wavespeed-load-tests");
@@ -59,7 +59,7 @@ describe("config/load", () => {
         defaults: {
           globalModel: "m1",
         },
-      })
+      }),
     );
 
     const { config, path: configPath } = loadConfig();
@@ -74,14 +74,9 @@ describe("config/load", () => {
   it("loads valid YAML config", () => {
     writeFile(
       "wavespeed.config.yaml",
-      [
-        "models:",
-        "  m2:",
-        "    provider: wavespeed",
-        "defaults:",
-        "  globalModel: m2",
-        "",
-      ].join("\n")
+      ["models:", "  m2:", "    provider: wavespeed", "defaults:", "  globalModel: m2", ""].join(
+        "\n",
+      ),
     );
 
     const { config, path: configPath } = loadConfig();
@@ -97,14 +92,9 @@ describe("config/load", () => {
     // Invalid JSON but valid YAML
     writeFile(
       ".wavespeedrc",
-      [
-        "models:",
-        "  m3:",
-        "    provider: wavespeed",
-        "defaults:",
-        "  globalModel: m3",
-        "",
-      ].join("\n")
+      ["models:", "  m3:", "    provider: wavespeed", "defaults:", "  globalModel: m3", ""].join(
+        "\n",
+      ),
     );
 
     const { config, path: configPath } = loadConfig();
@@ -137,7 +127,7 @@ describe("config/load", () => {
         defaults: {
           globalModel: "missing",
         },
-      })
+      }),
     );
 
     expect(() => loadConfig()).toThrow(ConfigError);
@@ -157,12 +147,13 @@ describe("config/load", () => {
             generate: "missing",
           },
         },
-      })
+      }),
     );
 
     expect(() => loadConfig()).toThrow(ConfigError);
   });
 
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: Template literals are used for testing interpolation
   it("supports ${ENV:VAR} and ${VAR} interpolation", () => {
     process.env.TEST_API_KEY = "secret";
     writeFile(
@@ -171,17 +162,19 @@ describe("config/load", () => {
         models: {
           m1: {
             provider: "wavespeed",
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: Template literals are used for testing interpolation
             apiKeyEnv: "${ENV:TEST_API_KEY}",
           },
           m2: {
             provider: "wavespeed",
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: Template literals are used for testing interpolation
             apiBaseUrl: "${TEST_BASE_URL}",
           },
         },
         defaults: {
           globalModel: "m1",
         },
-      })
+      }),
     );
 
     const { config } = loadConfig();
@@ -210,7 +203,7 @@ describe("config/load", () => {
           models: { homeModel: { provider: "wavespeed" } },
           defaults: { globalModel: "homeModel" },
         }),
-        "utf8"
+        "utf8",
       );
 
       writeFile(
@@ -218,7 +211,7 @@ describe("config/load", () => {
         JSON.stringify({
           models: { projectModel: { provider: "wavespeed" } },
           defaults: { globalModel: "projectModel" },
-        })
+        }),
       );
 
       const { config } = loadConfig();

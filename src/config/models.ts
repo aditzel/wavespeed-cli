@@ -1,11 +1,6 @@
-import {
-  ConfigLoadResult,
-  ResolvedModel,
-  ResolvedModelSummary,
-  WavespeedConfig,
-} from "./types";
 import { ConfigError } from "./load";
-import { getRegistryModel, getAllRegistryModels } from "./registry";
+import { getRegistryModel } from "./registry";
+import type { ResolvedModel, ResolvedModelSummary, WavespeedConfig } from "./types";
 
 const BUILTIN_MODEL_ID = "seedream-v4";
 
@@ -23,7 +18,7 @@ const BUILTIN_MODEL_BASE: Omit<ResolvedModel, "apiKey"> = {
 export function resolveModel(
   commandName: "generate" | "edit" | "generate-sequential" | "edit-sequential",
   cliModelFlag: string | undefined,
-  config: WavespeedConfig | undefined
+  config: WavespeedConfig | undefined,
 ): ResolvedModel {
   // 1) CLI flag
   if (cliModelFlag) {
@@ -34,16 +29,16 @@ export function resolveModel(
       if (registryModel) {
         // Construct a temporary model config from registry
         return resolveFromConfigModel(cliModelFlag, {
-            provider: registryModel.provider,
-            apiBaseUrl: registryModel.apiBaseUrl,
-            modelName: registryModel.modelName,
-            apiKeyEnv: "WAVESPEED_API_KEY", // Default to standard env
+          provider: registryModel.provider,
+          apiBaseUrl: registryModel.apiBaseUrl,
+          modelName: registryModel.modelName,
+          apiKeyEnv: "WAVESPEED_API_KEY", // Default to standard env
         });
       }
 
       throw new ConfigError(
         `Unknown model '${cliModelFlag}'. Use --list-models to see available models.`,
-        3
+        3,
       );
     }
     return resolveFromConfigModel(cliModelFlag, modelConfig);
@@ -55,19 +50,19 @@ export function resolveModel(
     const modelConfig = config?.models?.[cmdDefaultId];
     if (!modelConfig) {
       // Check registry if not in config
-       const registryModel = getRegistryModel(cmdDefaultId);
-       if (registryModel) {
-          return resolveFromConfigModel(cmdDefaultId, {
-              provider: registryModel.provider,
-              apiBaseUrl: registryModel.apiBaseUrl,
-              modelName: registryModel.modelName,
-              apiKeyEnv: "WAVESPEED_API_KEY",
-          });
-       }
+      const registryModel = getRegistryModel(cmdDefaultId);
+      if (registryModel) {
+        return resolveFromConfigModel(cmdDefaultId, {
+          provider: registryModel.provider,
+          apiBaseUrl: registryModel.apiBaseUrl,
+          modelName: registryModel.modelName,
+          apiKeyEnv: "WAVESPEED_API_KEY",
+        });
+      }
 
       throw new ConfigError(
         `Invalid config: defaults.commands.${commandName} refers to unknown model '${cmdDefaultId}'.`,
-        3
+        3,
       );
     }
     return resolveFromConfigModel(cmdDefaultId, modelConfig);
@@ -78,19 +73,19 @@ export function resolveModel(
   if (globalDefaultId) {
     const modelConfig = config?.models?.[globalDefaultId];
     if (!modelConfig) {
-       // Check registry if not in config
-       const registryModel = getRegistryModel(globalDefaultId);
-       if (registryModel) {
-          return resolveFromConfigModel(globalDefaultId, {
-              provider: registryModel.provider,
-              apiBaseUrl: registryModel.apiBaseUrl,
-              modelName: registryModel.modelName,
-              apiKeyEnv: "WAVESPEED_API_KEY",
-          });
-       }
+      // Check registry if not in config
+      const registryModel = getRegistryModel(globalDefaultId);
+      if (registryModel) {
+        return resolveFromConfigModel(globalDefaultId, {
+          provider: registryModel.provider,
+          apiBaseUrl: registryModel.apiBaseUrl,
+          modelName: registryModel.modelName,
+          apiKeyEnv: "WAVESPEED_API_KEY",
+        });
+      }
       throw new ConfigError(
         `Invalid config: defaults.globalModel '${globalDefaultId}' does not exist in models.`,
-        3
+        3,
       );
     }
     return resolveFromConfigModel(globalDefaultId, modelConfig);
@@ -99,10 +94,7 @@ export function resolveModel(
   // 4) Built-in fallback
   const apiKey = process.env.WAVESPEED_API_KEY;
   if (!apiKey) {
-    throw new ConfigError(
-      "Missing WAVESPEED_API_KEY for default Wavespeed model.",
-      2
-    );
+    throw new ConfigError("Missing WAVESPEED_API_KEY for default Wavespeed model.", 2);
   }
 
   return {
@@ -120,7 +112,7 @@ function resolveFromConfigModel(
     modelName?: string;
     type?: "image" | "chat" | "completion";
     requestDefaults?: ResolvedModel["requestDefaults"];
-  }
+  },
 ): ResolvedModel {
   const provider = model.provider;
 
@@ -130,19 +122,13 @@ function resolveFromConfigModel(
     if (provider === "wavespeed") {
       apiKeyEnv = "WAVESPEED_API_KEY";
     } else {
-      throw new ConfigError(
-        `Model '${id}' is missing apiKeyEnv.`,
-        3
-      );
+      throw new ConfigError(`Model '${id}' is missing apiKeyEnv.`, 3);
     }
   }
 
   const apiKey = process.env[apiKeyEnv];
   if (!apiKey) {
-    throw new ConfigError(
-      `Environment variable '${apiKeyEnv}' is not set for model '${id}'.`,
-      2
-    );
+    throw new ConfigError(`Environment variable '${apiKeyEnv}' is not set for model '${id}'.`, 2);
   }
 
   // apiBaseUrl
@@ -151,10 +137,7 @@ function resolveFromConfigModel(
     if (provider === "wavespeed") {
       apiBaseUrl = "https://api.wavespeed.ai";
     } else {
-      throw new ConfigError(
-        `Model '${id}' is missing apiBaseUrl.`,
-        3
-      );
+      throw new ConfigError(`Model '${id}' is missing apiBaseUrl.`, 3);
     }
   }
 
@@ -176,7 +159,7 @@ function resolveFromConfigModel(
 
 export function listModels(
   config: WavespeedConfig | undefined,
-  source?: string
+  source?: string,
 ): { models: ResolvedModelSummary[]; source?: string } {
   if (!config) {
     const models: ResolvedModelSummary[] = [
@@ -187,12 +170,7 @@ export function listModels(
         modelName: "bytedance/seedream-v4",
         apiKeyEnv: "WAVESPEED_API_KEY",
         isDefaultGlobal: true,
-        defaultForCommands: [
-          "generate",
-          "edit",
-          "generate-sequential",
-          "edit-sequential",
-        ],
+        defaultForCommands: ["generate", "edit", "generate-sequential", "edit-sequential"],
       },
     ];
     return { models, source };

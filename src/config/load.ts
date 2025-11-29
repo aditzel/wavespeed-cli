@@ -1,15 +1,14 @@
-import fs from "fs";
-import path from "path";
-import os from "os";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import YAML from "yaml";
-import {
-  ConfigLoadResult,
-  ModelConfig,
-  WavespeedConfig,
-} from "./types";
+import type { ConfigLoadResult, ModelConfig, WavespeedConfig } from "./types";
 
 export class ConfigError extends Error {
-  constructor(message: string, public readonly exitCode: number = 3) {
+  constructor(
+    message: string,
+    public readonly exitCode: number = 3,
+  ) {
     super(message);
     this.name = "ConfigError";
   }
@@ -32,7 +31,7 @@ const HOME_CONFIG_CANDIDATES = [
   ".wavespeedrc.yml",
 ];
 
-type AnyRecord = Record<string, any>;
+type AnyRecord = Record<string, unknown>;
 
 export function loadConfig(): ConfigLoadResult {
   const cwd = process.cwd();
@@ -55,7 +54,7 @@ export function loadConfig(): ConfigLoadResult {
   const raw = fs.readFileSync(configPath, "utf8");
   const ext = path.extname(configPath);
 
-  let parsed: any;
+  let parsed: unknown;
 
   try {
     if (!ext) {
@@ -73,15 +72,12 @@ export function loadConfig(): ConfigLoadResult {
     }
     throw new ConfigError(
       `Failed to parse config file '${configPath}': ${(err as Error).message}`,
-      3
+      3,
     );
   }
 
   if (!parsed || typeof parsed !== "object") {
-    throw new ConfigError(
-      `Invalid config structure in '${configPath}': expected an object`,
-      3
-    );
+    throw new ConfigError(`Invalid config structure in '${configPath}': expected an object`, 3);
   }
 
   const interpolated = interpolateEnv(parsed, configPath);
@@ -107,7 +103,7 @@ function tryParseJson(raw: string, filePath: string): AnyRecord {
   } catch (err) {
     throw new ConfigError(
       `Invalid JSON in config file '${filePath}': ${(err as Error).message}`,
-      3
+      3,
     );
   }
 }
@@ -118,7 +114,7 @@ function tryParseYaml(raw: string, filePath: string): AnyRecord {
   } catch (err) {
     throw new ConfigError(
       `Invalid YAML in config file '${filePath}': ${(err as Error).message}`,
-      3
+      3,
     );
   }
 }
@@ -137,12 +133,12 @@ function tryParseNoExtConfig(raw: string, filePath: string): AnyRecord {
   } catch (err) {
     throw new ConfigError(
       `Invalid config file '${filePath}': not valid JSON or YAML (${(err as Error).message})`,
-      3
+      3,
     );
   }
 }
 
-function interpolateEnv(value: any, contextPath: string): any {
+function interpolateEnv(value: unknown, contextPath: string): unknown {
   if (typeof value === "string") {
     const trimmed = value.trim();
     const match = /^\$\{([^}]+)\}$/.exec(trimmed);
@@ -162,7 +158,7 @@ function interpolateEnv(value: any, contextPath: string): any {
     if (!varName) {
       throw new ConfigError(
         `Invalid environment variable reference '\${${token}}' in '${contextPath}'`,
-        3
+        3,
       );
     }
 
@@ -182,7 +178,7 @@ function interpolateEnv(value: any, contextPath: string): any {
 
   if (value && typeof value === "object") {
     const out: AnyRecord = {};
-    for (const [k, v] of Object.entries(value)) {
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
       out[k] = interpolateEnv(v, contextPath);
     }
     return out;
@@ -201,7 +197,7 @@ function normalizeConfig(input: AnyRecord, filePath: string): WavespeedConfig {
 
   const models = input.models;
   if (models && typeof models === "object") {
-    for (const [key, rawModel] of Object.entries(models as Record<string, any>)) {
+    for (const [key, rawModel] of Object.entries(models as Record<string, unknown>)) {
       if (!rawModel || typeof rawModel !== "object") {
         continue;
       }
@@ -215,10 +211,7 @@ function normalizeConfig(input: AnyRecord, filePath: string): WavespeedConfig {
       config.models[key] = model;
     }
   } else if (models !== undefined) {
-    throw new ConfigError(
-      `Invalid 'models' section in '${filePath}': expected an object`,
-      3
-    );
+    throw new ConfigError(`Invalid 'models' section in '${filePath}': expected an object`, 3);
   }
 
   return config;
@@ -236,7 +229,7 @@ function validateConfig(config: WavespeedConfig, filePath: string): void {
   if (globalModel && !modelIds.has(globalModel)) {
     throw new ConfigError(
       `Invalid config '${filePath}': defaults.globalModel '${globalModel}' does not exist in models`,
-      3
+      3,
     );
   }
 
@@ -247,7 +240,7 @@ function validateConfig(config: WavespeedConfig, filePath: string): void {
       if (modelId && !modelIds.has(modelId)) {
         throw new ConfigError(
           `Invalid config '${filePath}': defaults.commands.${cmd} refers to unknown model '${modelId}'`,
-          3
+          3,
         );
       }
     }

@@ -1,12 +1,12 @@
-import { endpoints, TaskData, ApiEnvelope } from "./types.ts";
-import { ResolvedModel } from "../config/types";
+import type { ResolvedModel } from "../config/types";
+import { type ApiEnvelope, endpoints, type TaskData } from "./types.ts";
 
 async function httpJson(
   method: string,
   model: ResolvedModel,
   url: string,
-  body?: unknown
-): Promise<any> {
+  body?: unknown,
+): Promise<unknown> {
   const res = await fetch(`${model.apiBaseUrl}${url}`, {
     method,
     headers: {
@@ -18,7 +18,7 @@ async function httpJson(
   });
 
   const text = await res.text();
-  let json: any;
+  let json: unknown;
   try {
     json = text ? JSON.parse(text) : {};
   } catch {
@@ -26,7 +26,8 @@ async function httpJson(
   }
 
   if (!res.ok) {
-    const msg = json?.error || json?.message || res.statusText;
+    const errorBody = json as Record<string, unknown> | undefined;
+    const msg = errorBody?.error || errorBody?.message || res.statusText;
     throw new Error(`HTTP ${res.status}: ${msg}`);
   }
 
@@ -40,23 +41,20 @@ async function httpJson(
 export async function submitTask(
   model: ResolvedModel,
   path: string,
-  payload: unknown
+  payload: unknown,
 ): Promise<TaskData> {
   return httpJson("POST", model, path, payload);
 }
 
-export async function getResult(
-  model: ResolvedModel,
-  requestId: string
-): Promise<TaskData> {
+export async function getResult(model: ResolvedModel, requestId: string): Promise<TaskData> {
   return httpJson("GET", model, endpoints.result(requestId));
 }
 
-export async function getModels(apiKey: string): Promise<any[]> {
+export async function getModels(apiKey: string): Promise<unknown[]> {
   // This endpoint is global, not tied to a specific model config
   // We use the default Wavespeed API base URL
   const url = `https://api.wavespeed.ai${endpoints.models}`;
-  
+
   try {
     const res = await fetch(url, {
       method: "GET",
@@ -67,8 +65,8 @@ export async function getModels(apiKey: string): Promise<any[]> {
     });
 
     if (!res.ok) {
-       const text = await res.text();
-       throw new Error(`HTTP ${res.status}: ${text}`);
+      const text = await res.text();
+      throw new Error(`HTTP ${res.status}: ${text}`);
     }
 
     const json = await res.json();

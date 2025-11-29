@@ -1,4 +1,4 @@
-import { ProviderType } from "./types";
+import type { ProviderType } from "./types";
 
 export interface RegistryModel {
   id: string;
@@ -18,7 +18,8 @@ export const MODEL_REGISTRY: RegistryModel[] = [
     name: "Bytedance Seedream V4",
     provider: "wavespeed",
     modelName: "bytedance/seedream-v4",
-    description: "State-of-the-art text-to-image model optimized for multi-panel/tiled posters and design assets.",
+    description:
+      "State-of-the-art text-to-image model optimized for multi-panel/tiled posters and design assets.",
     docsUrl: "https://wavespeed.ai/docs/docs-api/bytedance/bytedance-seedream-v4",
     capabilities: ["image", "edit", "sequential"],
     isRecommended: true,
@@ -31,7 +32,7 @@ export const MODEL_REGISTRY: RegistryModel[] = [
     description: "Previous generation high-quality image generation model.",
     docsUrl: "https://wavespeed.ai/docs/docs-api/bytedance/bytedance-seedream-v3.1",
     capabilities: ["image"],
-  }
+  },
 ];
 
 export function getRegistryModel(id: string): RegistryModel | undefined {

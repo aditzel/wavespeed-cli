@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
 
 import { Command } from "commander";
-import { registerGenerate } from "./commands/generate.ts";
-import { registerEdit } from "./commands/edit.ts";
-import { registerGenerateSequential } from "./commands/generate-sequential.ts";
-import { registerEditSequential } from "./commands/edit-sequential.ts";
-import { registerModelsSelect } from "./commands/models-select.ts";
-import { registerModels } from "./commands/models.ts";
 import packageJson from "../package.json";
+import { registerEdit } from "./commands/edit.ts";
+import { registerEditSequential } from "./commands/edit-sequential.ts";
+import { registerGenerate } from "./commands/generate.ts";
+import { registerGenerateSequential } from "./commands/generate-sequential.ts";
+import { registerModels } from "./commands/models.ts";
+import { registerModelsSelect } from "./commands/models-select.ts";
 
 const program = new Command();
 

@@ -43,7 +43,7 @@ export interface ModelSchema {
   base_price: number;
   description: string;
   type: string;
-  api_schema?: any;
+  api_schema?: unknown;
 }
 
 export interface ModelsListResponse {

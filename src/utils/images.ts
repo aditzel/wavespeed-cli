@@ -1,6 +1,6 @@
+import { Buffer } from "node:buffer";
 import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
-import { Buffer } from "node:buffer";
 
 export async function ensureOutputDir(dir: string): Promise<void> {
   await mkdir(dir, { recursive: true });
@@ -45,22 +45,23 @@ export async function fileExists(filePath: string): Promise<boolean> {
 export async function convertFileToBase64(filePath: string): Promise<string> {
   const file = Bun.file(filePath);
   const buffer = await file.arrayBuffer();
-  return Buffer.from(buffer).toString('base64');
+  return Buffer.from(buffer).toString("base64");
 }
 
 export async function saveImagesFromOutputs(
   outputs: string[],
   outputDir: string,
-  taskId: string
+  taskId: string,
 ): Promise<{ savedPaths: string[]; failed: { index: number; reason: string }[] }> {
   await ensureOutputDir(outputDir);
   const results = await Promise.allSettled(
     outputs.map((item, i) => {
       const filename = `${taskId}_${i + 1}.png`;
       const destPath = path.join(outputDir, filename);
-      return (isUrl(item) ? downloadImageFromUrl(item, destPath) : saveBase64Image(item, destPath))
-        .then(() => destPath);
-    })
+      return (
+        isUrl(item) ? downloadImageFromUrl(item, destPath) : saveBase64Image(item, destPath)
+      ).then(() => destPath);
+    }),
   );
   const savedPaths: string[] = [];
   const failed: { index: number; reason: string }[] = [];

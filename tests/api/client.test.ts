@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { submitTask, getResult, endpoints } from "../../src/api/client.ts";
-import { ResolvedModel } from "../../src/config/types";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { endpoints, getResult, submitTask } from "../../src/api/client.ts";
+import type { ResolvedModel } from "../../src/config/types";
 
 const testModel: ResolvedModel = {
   id: "seedream-v4",
@@ -38,11 +38,7 @@ describe("API Client", () => {
         const method = options?.method || "GET";
 
         // Mock successful responses
-        if (
-          urlStr ===
-            "https://api.wavespeed.ai" + endpoints.edit &&
-          method === "POST"
-        ) {
+        if (urlStr === `https://api.wavespeed.ai${endpoints.edit}` && method === "POST") {
           return new Response(
             JSON.stringify({
               data: {
@@ -55,14 +51,12 @@ describe("API Client", () => {
             {
               status: 200,
               headers: { "content-type": "application/json" },
-            }
+            },
           );
         }
 
         if (
-          urlStr ===
-            "https://api.wavespeed.ai" +
-              endpoints.result("test-task-123") &&
+          urlStr === `https://api.wavespeed.ai${endpoints.result("test-task-123")}` &&
           method === "GET"
         ) {
           return new Response(
@@ -78,7 +72,7 @@ describe("API Client", () => {
             {
               status: 200,
               headers: { "content-type": "application/json" },
-            }
+            },
           );
         }
 
@@ -91,7 +85,7 @@ describe("API Client", () => {
             {
               status: 400,
               headers: { "content-type": "application/json" },
-            }
+            },
           );
         }
 
@@ -133,40 +127,36 @@ describe("API Client", () => {
     });
 
     it("should handle HTTP errors", async () => {
-      await expect(
-        submitTask(testModel, "/error", {})
-      ).rejects.toThrow("HTTP 400: Test error message");
+      await expect(submitTask(testModel, "/error", {})).rejects.toThrow(
+        "HTTP 400: Test error message",
+      );
     });
 
     it("should handle non-JSON responses", async () => {
-      await expect(
-        submitTask(testModel, "/non-json", {})
-      ).rejects.toThrow("Non JSON response with status 500");
+      await expect(submitTask(testModel, "/non-json", {})).rejects.toThrow(
+        "Non JSON response with status 500",
+      );
     });
 
     it("should send correct headers", async () => {
       let capturedHeaders: Record<string, string> = {};
 
-      globalThis.fetch = async (url: string | URL, options?: RequestInit) => {
-        capturedHeaders = Object.fromEntries(
-          Object.entries(options?.headers || {})
-        );
+      globalThis.fetch = async (_url: string | URL, options?: RequestInit) => {
+        capturedHeaders = Object.fromEntries(Object.entries(options?.headers || {}));
 
         return new Response(
           JSON.stringify({
             data: { id: "test", status: "created", outputs: [] },
           }),
-          { status: 200 }
+          { status: 200 },
         );
       };
 
       await submitTask(testModel, endpoints.edit, { test: "data" });
 
-      expect(capturedHeaders["Authorization"]).toBe(
-        `Bearer ${testModel.apiKey}`
-      );
+      expect(capturedHeaders.Authorization).toBe(`Bearer ${testModel.apiKey}`);
       expect(capturedHeaders["Content-Type"]).toBe("application/json");
-      expect(capturedHeaders["Accept"]).toBe("application/json");
+      expect(capturedHeaders.Accept).toBe("application/json");
     });
   });
 
@@ -174,15 +164,9 @@ describe("API Client", () => {
     it("should have correct endpoint URLs", () => {
       expect(endpoints.generate).toBe("/api/v3/bytedance/seedream-v4");
       expect(endpoints.edit).toBe("/api/v3/bytedance/seedream-v4/edit");
-      expect(endpoints.generateSequential).toBe(
-        "/api/v3/bytedance/seedream-v4/sequential"
-      );
-      expect(endpoints.editSequential).toBe(
-        "/api/v3/bytedance/seedream-v4/edit-sequential"
-      );
-      expect(endpoints.result("test-123")).toBe(
-        "/api/v3/predictions/test-123/result"
-      );
+      expect(endpoints.generateSequential).toBe("/api/v3/bytedance/seedream-v4/sequential");
+      expect(endpoints.editSequential).toBe("/api/v3/bytedance/seedream-v4/edit-sequential");
+      expect(endpoints.result("test-123")).toBe("/api/v3/predictions/test-123/result");
     });
   });
 });

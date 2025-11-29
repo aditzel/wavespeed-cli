@@ -1,5 +1,5 @@
-import { TaskData } from "../api/types.ts";
 import { getResult } from "../api/client.ts";
+import type { TaskData } from "../api/types.ts";
 
 const DEFAULT_POLL_INTERVAL_MS = 2000;
 const MAX_POLL_DURATION_MS = 10 * 60 * 1000; // 10 minutes
@@ -9,7 +9,7 @@ const MAX_POLL_DURATION_MS = 10 * 60 * 1000; // 10 minutes
 export async function pollUntilDone(
   requestId: string,
   intervalMs: number = DEFAULT_POLL_INTERVAL_MS,
-  maxDurationMs: number = MAX_POLL_DURATION_MS
+  maxDurationMs: number = MAX_POLL_DURATION_MS,
 ): Promise<TaskData> {
   const start = Date.now();
 
@@ -17,9 +17,7 @@ export async function pollUntilDone(
   while (true) {
     const now = Date.now();
     if (now - start > maxDurationMs) {
-      throw new Error(
-        `Polling timed out after ${maxDurationMs}ms for request ${requestId}`
-      );
+      throw new Error(`Polling timed out after ${maxDurationMs}ms for request ${requestId}`);
     }
 
     const data = await getResult(requestId);
