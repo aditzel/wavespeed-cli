@@ -1,38 +1,81 @@
 # wavespeed-cli
 
 [![Test and Build](https://github.com/aditzel/wavespeed-cli/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/aditzel/wavespeed-cli/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
+[![Bun](https://img.shields.io/badge/Bun-Runtime-f9f1e1.svg)](https://bun.sh)
 
-A TypeScript CLI for the Wavespeed AI Bytedance Seedream V4 API, built with Bun.
+A powerful command-line interface for [Wavespeed AI](https://wavespeed.ai)'s image generation and editing APIs. Generate stunning images from text prompts, edit existing images, and create consistent image sequences—all from your terminal.
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Features](#features)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Multi-model Support](#multi-model-selection)
+- [Error Handling](#error-handling-and-exit-codes)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Quick Start
+
+Get up and running in under 2 minutes:
+
+```bash
+# Install Bun (if not already installed)
+curl -fsSL https://bun.sh/install | bash
+
+# Clone and build
+git clone https://github.com/aditzel/wavespeed-cli.git
+cd wavespeed-cli
+bun install && bun run build && bun link
+
+# Set your API key
+export WAVESPEED_API_KEY="your_api_key_here"
+
+# Generate your first image
+wavespeed generate --prompt "a photorealistic cat sitting on a windowsill"
+```
 
 ## Features
 
-- **Text-to-Image Generation**: Create images from text prompts
-- **Image Editing**: Modify existing images with prompts
-- **Sequential Generation**: Generate consistent image sequences
-- **Sequential Editing**: Edit images while maintaining consistency
+### Core Capabilities
+
+| Feature | Description |
+|---------|-------------|
+| **Text-to-Image Generation** | Create images from text prompts using state-of-the-art AI models |
+| **Image Editing** | Modify existing images with natural language prompts |
+| **Sequential Generation** | Generate consistent image sequences for animations or storyboards |
+| **Sequential Editing** | Edit multiple images while maintaining visual consistency |
+
+### Developer Experience
+
 - **Auto-Download**: Images are automatically downloaded when generation completes
-- **Base64 Support**: Decode and save base64-encoded image outputs
-- **Config-driven multi-model support**: Select between multiple providers/models via config
-
-## API Documentation
-
-- [Bytedance Seedream V4 (Generate)](https://wavespeed.ai/docs/docs-api/bytedance/bytedance-seedream-v4)
-- [Bytedance Seedream V4 Edit](https://wavespeed.ai/docs/docs-api/bytedance/bytedance-seedream-v4-edit)
-- [Bytedance Seedream V4 Sequential](https://wavespeed.ai/docs/docs-api/bytedance/bytedance-seedream-v4-sequential)
-- [Bytedance Seedream V4 Edit Sequential](https://wavespeed.ai/docs/docs-api/bytedance/bytedance-seedream-v4-edit-sequential)
+- **Base64 Support**: Seamlessly decode and save base64-encoded image outputs
+- **Multi-Model Support**: Switch between different AI providers and models via configuration
+- **Flexible Configuration**: JSON/YAML config files with environment variable interpolation
+- **Comprehensive Validation**: Clear error messages with actionable guidance
 
 ## Installation
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) installed (`brew install oven-sh/bun/bun` on macOS)
-- A Wavespeed API key
+Before installing wavespeed-cli, ensure you have:
+
+- **[Bun](https://bun.sh)** (v1.0 or later) - A fast JavaScript runtime
+  - macOS: `brew install oven-sh/bun/bun`
+  - Linux/WSL: `curl -fsSL https://bun.sh/install | bash`
+- **Wavespeed API Key** - Get one at [wavespeed.ai](https://wavespeed.ai)
 
 ### Build and Install
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/wavespeed-cli.git
+git clone https://github.com/aditzel/wavespeed-cli.git
 cd wavespeed-cli
 
 # Install dependencies
@@ -45,42 +88,31 @@ bun run build
 bun link
 ```
 
+### Set Up Your API Key
+
+The CLI requires a Wavespeed API key. Set it as an environment variable:
+
+**Bash/Zsh:**
+```bash
+export WAVESPEED_API_KEY="your_api_key_here"
+# Add to ~/.bashrc or ~/.zshrc for persistence
+```
+
+**Fish:**
+```fish
+set -Ux WAVESPEED_API_KEY "your_api_key_here"
+```
+
 ## Configuration
 
-### Environment Variable (default behavior)
+### Default Configuration
 
-By default, the CLI uses the built-in Wavespeed Seedream V4 configuration. You only need:
-
-- `WAVESPEED_API_KEY` set in your environment.
-
-For Fish shell users:
-
-```fish
-# Check if the variable exists
-echo $WAVESPEED_API_KEY
-
-# If not set, add it globally
-set -Ux WAVESPEED_API_KEY "your_api_key_here"
-
-# Reload your configuration
-source ~/.config/fish/config.fish
-```
-
-For Bash/Zsh users:
-
-```bash
-# Add to ~/.bashrc or ~/.zshrc
-export WAVESPEED_API_KEY="your_api_key_here"
-
-# Reload
-source ~/.bashrc  # or source ~/.zshrc
-```
+By default, the CLI uses the built-in Wavespeed Seedream V4 configuration with `WAVESPEED_API_KEY` from your environment. No config file is required for basic usage.
 
 If no config file is present, all commands:
 - Use `https://api.wavespeed.ai`
 - Use `WAVESPEED_API_KEY`
 - Target the Bytedance Seedream V4 endpoints
-This preserves backward compatibility.
 
 ### Config file discovery (multi-model support)
 
@@ -396,6 +428,12 @@ bun run dev
 
 # Build for production
 bun run build
+
+# Lint the code
+bun run lint
+
+# Format the code
+bun run format
 ```
 
 ### Testing
@@ -404,9 +442,11 @@ bun run build
 # Run all tests
 bun test
 
-# (Optional helpers if added)
-# bun test:watch
-# bun test:coverage
+# Run tests in watch mode
+bun test:watch
+
+# Run tests with coverage
+bun test:coverage
 ```
 
 Test coverage includes:
@@ -419,6 +459,50 @@ Test coverage includes:
 - Config loading and model resolution
 - Multi-model selection and listing flags
 
+## Troubleshooting
+
+### Common Issues
+
+**"WAVESPEED_API_KEY is not set"**
+```bash
+# Verify your API key is set
+echo $WAVESPEED_API_KEY
+
+# Set it if missing
+export WAVESPEED_API_KEY="your_api_key_here"
+```
+
+**"Command not found: wavespeed"**
+```bash
+# Rebuild and relink the CLI
+bun run build && bun link
+
+# Or run directly with Bun
+bun run src/index.ts generate --prompt "test"
+```
+
+**"Unknown model 'X'"**
+- Check your config file with `wavespeed --list-models`
+- Ensure the model ID matches exactly (case-sensitive)
+
+**"Invalid size format"**
+- Use format: `WIDTHxHEIGHT` or `WIDTH*HEIGHT`
+- Minimum: 1024x1024, Maximum: 4096x4096
+
+**Network/API errors**
+- Verify your internet connection
+- Check if your API key is valid at [wavespeed.ai](https://wavespeed.ai)
+- Ensure the API service is available
+
+## API Documentation
+
+For detailed API specifications, see:
+
+- [Bytedance Seedream V4 (Generate)](https://wavespeed.ai/docs/docs-api/bytedance/bytedance-seedream-v4)
+- [Bytedance Seedream V4 Edit](https://wavespeed.ai/docs/docs-api/bytedance/bytedance-seedream-v4-edit)
+- [Bytedance Seedream V4 Sequential](https://wavespeed.ai/docs/docs-api/bytedance/bytedance-seedream-v4-sequential)
+- [Bytedance Seedream V4 Edit Sequential](https://wavespeed.ai/docs/docs-api/bytedance/bytedance-seedream-v4-edit-sequential)
+
 ## Pricing
 
 From the API documentation:
@@ -426,11 +510,21 @@ From the API documentation:
 - Standard generation: $0.027 per image
 - Sequential generation: $0.027 × `max_images`
 
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
 ## License
 
-MIT License - see `LICENSE` for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Support
 
-- For API issues: see Wavespeed API documentation.
-- For CLI issues: open an issue on GitHub.
+- **API Issues**: See [Wavespeed API documentation](https://wavespeed.ai/docs)
+- **CLI Issues**: [Open an issue on GitHub](https://github.com/aditzel/wavespeed-cli/issues)
