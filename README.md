@@ -1,5 +1,7 @@
 # wavespeed-cli
 
+[![Test and Build](https://github.com/aditzel/wavespeed-cli/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/aditzel/wavespeed-cli/actions/workflows/test.yml)
+
 A TypeScript CLI for the Wavespeed AI Bytedance Seedream V4 API, built with Bun.
 
 ## Features
