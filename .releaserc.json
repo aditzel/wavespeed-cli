@@ -20,6 +20,9 @@
     ["@semantic-release/npm", {
       "pkgRoot": "."
     }],
+    ["@semantic-release/exec", {
+      "prepareCmd": "bun run build"
+    }],
     "@semantic-release/github",
     ["@semantic-release/git", {
       "assets": ["CHANGELOG.md", "package.json"],
