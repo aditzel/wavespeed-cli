@@ -64,11 +64,10 @@ jobs:
       - name: Build CLI
         run: bun run build
 
-      - name: Setup npm authentication
-        run: echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+      - name: Update npm for OIDC support
+        run: npm install -g npm@latest
 
       - name: Run semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npx semantic-release
