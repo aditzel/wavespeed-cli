@@ -6,6 +6,7 @@ import { registerEdit } from "./commands/edit.ts";
 import { registerEditSequential } from "./commands/edit-sequential.ts";
 import { registerGenerate } from "./commands/generate.ts";
 import { registerGenerateSequential } from "./commands/generate-sequential.ts";
+import { registerMCP } from "./commands/mcp.ts";
 import { registerModels } from "./commands/models.ts";
 import { registerModelsSelect } from "./commands/models-select.ts";
 
@@ -23,6 +24,7 @@ registerGenerateSequential(program);
 registerEditSequential(program);
 registerModelsSelect(program);
 registerModels(program);
+registerMCP(program);
 
 async function main() {
   await program.parseAsync(process.argv);

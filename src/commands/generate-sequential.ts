@@ -1,32 +1,8 @@
 import type { Command } from "commander";
-import { endpoints, submitTask } from "../api/client.ts";
-import type { TaskData } from "../api/types.ts";
 import { loadConfig } from "../config/load";
 import { ConfigError, resolveModel } from "../config/models";
-import { saveImagesFromOutputs } from "../utils/images.ts";
-import { pollUntilDone } from "../utils/polling.ts";
+import { formatForCLI, generateSequential } from "../core";
 import { ensurePrompt, parseMaxImages, parseSize } from "../utils/validation.ts";
-
-function printResult(d: TaskData, base64: boolean) {
-  console.log("Task ID:", d.id);
-  console.log("Status:", d.status);
-  if (d.timings?.inference != null) {
-    console.log("Inference time ms:", d.timings.inference);
-  }
-  if (d.has_nsfw_contents?.some(Boolean)) {
-    console.warn("Warning: NSFW content flagged in one or more outputs");
-  }
-  if (d.outputs?.length) {
-    if (base64) {
-      console.log("Outputs base64:");
-    } else {
-      console.log("Outputs urls:");
-    }
-    d.outputs.forEach((o, idx) => {
-      console.log(`${idx + 1}. ${o}`);
-    });
-  }
-}
 
 export function registerGenerateSequential(program: Command) {
   program
@@ -45,7 +21,7 @@ export function registerGenerateSequential(program: Command) {
     .action(async (opts, command) => {
       try {
         const prompt = ensurePrompt(opts.prompt);
-        const max_images = parseMaxImages(opts.maxImages);
+        const maxImages = parseMaxImages(opts.maxImages);
         const size = parseSize(opts.size);
         const base64 = Boolean(opts.base64);
         const syncMode = Boolean(opts.sync);
@@ -58,41 +34,25 @@ export function registerGenerateSequential(program: Command) {
         const { config } = loadConfig();
         const model = resolveModel("generate-sequential", cliModelFlag, config);
 
-        const payload: Record<string, unknown> = {
+        // Use core operation
+        const result = await generateSequential({
           prompt,
-          max_images,
+          maxImages,
           size,
-          enable_base64_output: base64,
-          enable_sync_mode: syncMode,
-          model: model.modelName ?? model.id,
-        };
+          base64Output: base64,
+          syncMode,
+          model,
+        });
 
-        const created = await submitTask(model, endpoints.generateSequential, payload);
-
-        const final = await pollUntilDone(created.id);
-        if (final.status === "failed") {
-          throw new Error(final.error || "Task failed");
+        if (!result.success) {
+          throw new Error(result.error || "Task failed");
         }
-        printResult(final, base64);
 
-        const outputs = final.outputs || [];
-        if (!outputs.length) {
-          console.warn("No images were returned by the API.");
-        } else {
-          const { savedPaths, failed } = await saveImagesFromOutputs(outputs, outputDir, final.id);
-          console.log("\nSaved files:");
-          savedPaths.forEach((p) => {
-            console.log(`  ${p}`);
-          });
-          if (failed.length) {
-            console.warn(`\nFailed to save ${failed.length} image(s):`);
-            failed.forEach((f) => {
-              console.warn(`  #${f.index + 1}: ${f.reason}`);
-            });
-          }
-          if (!savedPaths.length) {
-            process.exit(1);
-          }
+        // Format and display for CLI
+        const { savedPaths } = await formatForCLI(result, outputDir, base64);
+
+        if (!savedPaths.length && result.outputs.length) {
+          process.exit(1);
         }
       } catch (err) {
         const error = err as Error | ConfigError;
