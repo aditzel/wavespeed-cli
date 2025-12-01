@@ -2,6 +2,13 @@
 
 All notable changes to wavespeed-cli will be documented in this file.
 
+# [1.1.0](https://github.com/aditzel/wavespeed-cli/compare/v1.0.1...v1.1.0) (2025-12-01)
+
+
+### Features
+
+* **mcp:** add list_models tool for dynamic model discovery ([f6adb25](https://github.com/aditzel/wavespeed-cli/commit/f6adb253922fade75a87c6761ab4e793359ee3f5))
+
 ## [1.0.1](https://github.com/aditzel/wavespeed-cli/compare/v1.0.0...v1.0.1) (2025-12-01)
 
 
