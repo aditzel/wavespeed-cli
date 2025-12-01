@@ -1,7 +1,9 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { getModels } from "../api/client";
 import { loadConfig } from "../config/load";
 import { ConfigError, resolveModel } from "../config/models";
+import { type RegistryModel, getAllRegistryModels } from "../config/registry";
 import {
   createMCPError,
   editImage,
@@ -23,10 +25,86 @@ const outputDirSchema = z.string().default("./output");
  * Register all MCP tools
  */
 export function registerTools(server: McpServer): void {
+  registerListModelsTool(server);
   registerGenerateTool(server);
   registerEditTool(server);
   registerGenerateSequentialTool(server);
   registerEditSequentialTool(server);
+}
+
+/**
+ * List models tool - discover available models
+ */
+function registerListModelsTool(server: McpServer): void {
+  server.registerTool(
+    "list_models",
+    {
+      title: "List Models",
+      description:
+        "List available Wavespeed AI models with their capabilities. Call this to discover valid model IDs before using generate/edit tools.",
+      inputSchema: {},
+    },
+    async () => {
+      const apiKey = process.env.WAVESPEED_API_KEY;
+
+      // Try API first, fall back to registry
+      type ApiModel = { model_id: string; name: string; description?: string };
+      let apiModels: ApiModel[] = [];
+
+      if (apiKey) {
+        try {
+          apiModels = (await getModels(apiKey)) as ApiModel[];
+        } catch {
+          // Fall through to registry
+        }
+      }
+
+      // If we got API models, use those
+      if (apiModels.length > 0) {
+        const models = apiModels.map((m) => ({
+          id: m.model_id,
+          name: m.name,
+          description: m.description,
+        }));
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({
+                models,
+                source: "api",
+                note: "Use model 'id' as the 'model' parameter in generate/edit tools",
+              }),
+            },
+          ],
+        };
+      }
+
+      // Fall back to hardcoded registry
+      const registryModels: RegistryModel[] = getAllRegistryModels();
+      const models = registryModels.map((m) => ({
+        id: m.id,
+        name: m.name,
+        description: m.description,
+        capabilities: m.capabilities,
+        recommended: m.isRecommended || false,
+      }));
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              models,
+              source: "registry",
+              note: "Use model 'id' as the 'model' parameter in generate/edit tools",
+            }),
+          },
+        ],
+      };
+    },
+  );
 }
 
 /**
