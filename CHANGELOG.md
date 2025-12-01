@@ -2,6 +2,13 @@
 
 All notable changes to wavespeed-cli will be documented in this file.
 
+## [1.0.1](https://github.com/aditzel/wavespeed-cli/compare/v1.0.0...v1.0.1) (2025-12-01)
+
+
+### Bug Fixes
+
+* sync version to 1.0.0 and enable release commits ([e793100](https://github.com/aditzel/wavespeed-cli/commit/e793100186784877816881f420cbc600740f366d))
+
 # 1.0.0 (2025-12-01)
 
 
