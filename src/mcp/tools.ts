@@ -98,6 +98,7 @@ function registerListModelsTool(server: McpServer): void {
                     id: r.id,
                     type: r.type,
                     desc: r.desc,
+                    price: r.price,
                   })),
                   usage:
                     "Use 'type' or 'search' params to filter. Use model 'id' in generate/edit tools.",
@@ -120,6 +121,7 @@ function registerListModelsTool(server: McpServer): void {
                   id: m.model_id,
                   name: m.name,
                   type: m.type,
+                  price: m.base_price,
                 })),
                 meta: {
                   total: type

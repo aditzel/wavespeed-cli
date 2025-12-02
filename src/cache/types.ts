@@ -68,6 +68,7 @@ export interface RecommendedModel {
   id: string;
   type: string;
   desc: string;
+  price?: number;
 }
 
 /** Current cache schema version */

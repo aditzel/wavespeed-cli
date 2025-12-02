@@ -83,7 +83,7 @@ export function registerModels(program: Command) {
         // Merge API and Registry models for display
         const displayMap = new Map<
           string,
-          { name: string; desc: string; source: string[]; type: string }
+          { name: string; desc: string; source: string[]; type: string; price?: number }
         >();
 
         // Add registry models
@@ -110,6 +110,7 @@ export function registerModels(program: Command) {
               desc: am.description || "",
               source: ["API"],
               type: am.type,
+              price: am.base_price,
             });
           }
         }
@@ -126,6 +127,7 @@ export function registerModels(program: Command) {
           const tags = item.source.map((s) => `[${s}]`).join(" ");
           console.log(`${key} ${tags}`);
           console.log(`  Type: ${item.type}`);
+          if (item.price !== undefined) console.log(`  Price: ${item.price}`);
           if (item.desc) console.log(`  Desc: ${item.desc}`);
           console.log("");
         }

@@ -462,14 +462,22 @@ export class ModelCache {
     if (!this.data) return recommended;
 
     // Filter to only models that exist in the API response
-    const existingIds = new Set(this.data.models.map((m) => m.model_id));
-    const filtered = recommended.filter((r) => existingIds.has(r.id));
+    const existingMap = new Map(this.data.models.map((m) => [m.model_id, m]));
+    const filtered = recommended
+      .filter((r) => existingMap.has(r.id))
+      .map((r) => ({
+        ...r,
+        price: existingMap.get(r.id)?.base_price,
+      }));
 
     // If filtering removed too many, supplement with fallback
     if (filtered.length < 3) {
       const fallbackFiltered = FALLBACK_RECOMMENDED.filter(
-        (r) => existingIds.has(r.id) && !filtered.some((f) => f.id === r.id),
-      );
+        (r) => existingMap.has(r.id) && !filtered.some((f) => f.id === r.id),
+      ).map((r) => ({
+        ...r,
+        price: existingMap.get(r.id)?.base_price,
+      }));
       return [...filtered, ...fallbackFiltered].slice(0, 10);
     }
 

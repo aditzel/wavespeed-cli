@@ -32,7 +32,7 @@ export async function pollUntilDone(
 
     const data = await getResult(model, requestId);
 
-    if (data.status === "succeeded" || data.status === "failed") {
+    if (data.status === "completed" || data.status === "failed" || data.status === "succeeded") {
       console.error(`[DEBUG] Polling completed for request ${requestId}: status=${data.status} (${iteration} iterations, ${elapsed}ms)`);
       return data;
     }
