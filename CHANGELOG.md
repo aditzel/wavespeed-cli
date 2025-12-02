@@ -2,6 +2,13 @@
 
 All notable changes to wavespeed-cli will be documented in this file.
 
+## [1.2.1](https://github.com/aditzel/wavespeed-cli/compare/v1.2.0...v1.2.1) (2025-12-02)
+
+
+### Bug Fixes
+
+* **mcp:** validate models against API cache, not just hardcoded registry ([7d58f85](https://github.com/aditzel/wavespeed-cli/commit/7d58f859c5ecb7b23468e7d047ddd2d3bb87e791))
+
 # [1.2.0](https://github.com/aditzel/wavespeed-cli/compare/v1.1.1...v1.2.0) (2025-12-02)
 
 
