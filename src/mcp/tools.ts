@@ -2,7 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { ModelCache } from "../cache";
 import { loadConfig } from "../config/load";
-import { ConfigError, resolveModel } from "../config/models";
+import { type ApiModelCache, ConfigError, resolveModel } from "../config/models";
 import { getAllRegistryModels, type RegistryModel } from "../config/registry";
 import {
   createMCPError,
@@ -194,7 +194,11 @@ function registerGenerateTool(server: McpServer): void {
         const outputMode = output as OutputMode;
 
         const { config } = loadConfig();
-        const resolvedModel = resolveModel("generate", model, config);
+        const cache = ModelCache.getInstance();
+        const apiCache: ApiModelCache | undefined = cache.hasData()
+          ? { models: cache.filterModels({}) }
+          : undefined;
+        const resolvedModel = resolveModel("generate", model, config, apiCache);
 
         const result = await generateImage({
           prompt: validatedPrompt,
@@ -271,7 +275,11 @@ function registerEditTool(server: McpServer): void {
         const outputMode = output as OutputMode;
 
         const { config } = loadConfig();
-        const resolvedModel = resolveModel("edit", model, config);
+        const cache = ModelCache.getInstance();
+        const apiCache: ApiModelCache | undefined = cache.hasData()
+          ? { models: cache.filterModels({}) }
+          : undefined;
+        const resolvedModel = resolveModel("edit", model, config, apiCache);
 
         const result = await editImage({
           prompt: validatedPrompt,
@@ -343,7 +351,11 @@ function registerGenerateSequentialTool(server: McpServer): void {
         const outputMode = output as OutputMode;
 
         const { config } = loadConfig();
-        const resolvedModel = resolveModel("generate-sequential", model, config);
+        const cache = ModelCache.getInstance();
+        const apiCache: ApiModelCache | undefined = cache.hasData()
+          ? { models: cache.filterModels({}) }
+          : undefined;
+        const resolvedModel = resolveModel("generate-sequential", model, config, apiCache);
 
         const result = await generateSequential({
           prompt: validatedPrompt,
@@ -427,7 +439,11 @@ function registerEditSequentialTool(server: McpServer): void {
         const outputMode = output as OutputMode;
 
         const { config } = loadConfig();
-        const resolvedModel = resolveModel("edit-sequential", model, config);
+        const cache = ModelCache.getInstance();
+        const apiCache: ApiModelCache | undefined = cache.hasData()
+          ? { models: cache.filterModels({}) }
+          : undefined;
+        const resolvedModel = resolveModel("edit-sequential", model, config, apiCache);
 
         const result = await editSequential({
           prompt: validatedPrompt,

@@ -2,6 +2,14 @@ import { ConfigError } from "./load";
 import { getRegistryModel } from "./registry";
 import type { ResolvedModel, ResolvedModelSummary, WavespeedConfig } from "./types";
 
+/**
+ * Lightweight interface for API model cache data
+ * Used to validate model IDs against the API without tight coupling
+ */
+export interface ApiModelCache {
+  models: Array<{ model_id: string }>;
+}
+
 const BUILTIN_MODEL_ID = "seedream-v4";
 
 const BUILTIN_MODEL_BASE: Omit<ResolvedModel, "apiKey"> = {
@@ -19,12 +27,14 @@ export function resolveModel(
   commandName: "generate" | "edit" | "generate-sequential" | "edit-sequential",
   cliModelFlag: string | undefined,
   config: WavespeedConfig | undefined,
+  apiCache?: ApiModelCache,
 ): ResolvedModel {
   // 1) CLI flag
   if (cliModelFlag) {
     const modelConfig = config?.models?.[cliModelFlag];
-    // If not in config, check registry
+    // If not in config, check registry then API cache
     if (!modelConfig) {
+      // Check registry for short aliases (e.g., "seedream-v4")
       const registryModel = getRegistryModel(cliModelFlag);
       if (registryModel) {
         // Construct a temporary model config from registry
@@ -33,6 +43,27 @@ export function resolveModel(
           apiBaseUrl: registryModel.apiBaseUrl,
           modelName: registryModel.modelName,
           apiKeyEnv: "WAVESPEED_API_KEY", // Default to standard env
+        });
+      }
+
+      // Check API cache for valid model IDs
+      if (apiCache?.models) {
+        const apiModel = apiCache.models.find((m) => m.model_id === cliModelFlag);
+        if (apiModel) {
+          // Model exists in API - construct wavespeed config
+          return resolveFromConfigModel(cliModelFlag, {
+            provider: "wavespeed",
+            modelName: cliModelFlag,
+          });
+        }
+      }
+
+      // If model looks like an API model ID (contains '/'), trust it and let API validate
+      // This handles cases where cache isn't loaded yet but user knows the model ID
+      if (cliModelFlag.includes("/")) {
+        return resolveFromConfigModel(cliModelFlag, {
+          provider: "wavespeed",
+          modelName: cliModelFlag,
         });
       }
 
@@ -60,6 +91,25 @@ export function resolveModel(
         });
       }
 
+      // Check API cache for valid model IDs
+      if (apiCache?.models) {
+        const apiModel = apiCache.models.find((m) => m.model_id === cmdDefaultId);
+        if (apiModel) {
+          return resolveFromConfigModel(cmdDefaultId, {
+            provider: "wavespeed",
+            modelName: cmdDefaultId,
+          });
+        }
+      }
+
+      // Trust API model format
+      if (cmdDefaultId.includes("/")) {
+        return resolveFromConfigModel(cmdDefaultId, {
+          provider: "wavespeed",
+          modelName: cmdDefaultId,
+        });
+      }
+
       throw new ConfigError(
         `Invalid config: defaults.commands.${commandName} refers to unknown model '${cmdDefaultId}'.`,
         3,
@@ -83,6 +133,26 @@ export function resolveModel(
           apiKeyEnv: "WAVESPEED_API_KEY",
         });
       }
+
+      // Check API cache for valid model IDs
+      if (apiCache?.models) {
+        const apiModel = apiCache.models.find((m) => m.model_id === globalDefaultId);
+        if (apiModel) {
+          return resolveFromConfigModel(globalDefaultId, {
+            provider: "wavespeed",
+            modelName: globalDefaultId,
+          });
+        }
+      }
+
+      // Trust API model format
+      if (globalDefaultId.includes("/")) {
+        return resolveFromConfigModel(globalDefaultId, {
+          provider: "wavespeed",
+          modelName: globalDefaultId,
+        });
+      }
+
       throw new ConfigError(
         `Invalid config: defaults.globalModel '${globalDefaultId}' does not exist in models.`,
         3,
