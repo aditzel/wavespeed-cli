@@ -7,7 +7,10 @@ async function httpJson(
   url: string,
   body?: unknown,
 ): Promise<unknown> {
-  const res = await fetch(`${model.apiBaseUrl}${url}`, {
+  const fullUrl = `${model.apiBaseUrl}${url}`;
+  console.error(`[DEBUG] HTTP ${method} ${fullUrl} (model=${model.id})`);
+
+  const res = await fetch(fullUrl, {
     method,
     headers: {
       Authorization: `Bearer ${model.apiKey}`,
@@ -18,16 +21,20 @@ async function httpJson(
   });
 
   const text = await res.text();
+  console.error(`[DEBUG] HTTP ${method} ${fullUrl} -> ${res.status} ${res.statusText}`);
+
   let json: unknown;
   try {
     json = text ? JSON.parse(text) : {};
   } catch {
+    console.error(`[DEBUG] Failed to parse JSON response: ${text.substring(0, 200)}`);
     throw new Error(`Non JSON response with status ${res.status}`);
   }
 
   if (!res.ok) {
     const errorBody = json as Record<string, unknown> | undefined;
     const msg = errorBody?.error || errorBody?.message || res.statusText;
+    console.error(`[DEBUG] HTTP error ${res.status}: ${msg}`);
     throw new Error(`HTTP ${res.status}: ${msg}`);
   }
 
@@ -55,6 +62,8 @@ export async function getModels(apiKey: string): Promise<unknown[]> {
   // We use the default Wavespeed API base URL
   const url = `https://api.wavespeed.ai${endpoints.models}`;
 
+  console.error(`[DEBUG] Fetching models from ${url}`);
+
   try {
     const res = await fetch(url, {
       method: "GET",
@@ -64,18 +73,24 @@ export async function getModels(apiKey: string): Promise<unknown[]> {
       },
     });
 
+    console.error(`[DEBUG] GET ${url} -> ${res.status} ${res.statusText}`);
+
     if (!res.ok) {
       const text = await res.text();
+      console.error(`[DEBUG] Failed to fetch models: HTTP ${res.status}: ${text}`);
       throw new Error(`HTTP ${res.status}: ${text}`);
     }
 
     const json = await res.json();
     // The API returns { code: 200, data: [...] }
     if (json && Array.isArray(json.data)) {
+      console.error(`[DEBUG] Successfully fetched ${json.data.length} models`);
       return json.data;
     }
+    console.error(`[DEBUG] Unexpected response format, returning empty array`);
     return [];
   } catch (err) {
+    console.error(`[DEBUG] Exception fetching models: ${(err as Error).message}`);
     throw new Error(`Failed to fetch models: ${(err as Error).message}`);
   }
 }
