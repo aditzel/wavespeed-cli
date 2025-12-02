@@ -2,6 +2,13 @@
 
 All notable changes to wavespeed-cli will be documented in this file.
 
+# [1.2.0](https://github.com/aditzel/wavespeed-cli/compare/v1.1.1...v1.2.0) (2025-12-02)
+
+
+### Features
+
+* **mcp:** optimize list_models for LLM context windows ([3243624](https://github.com/aditzel/wavespeed-cli/commit/32436243f387f28ea6b573e832de8de050bc4ca8))
+
 ## [1.1.1](https://github.com/aditzel/wavespeed-cli/compare/v1.1.0...v1.1.1) (2025-12-01)
 
 
