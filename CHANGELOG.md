@@ -2,6 +2,13 @@
 
 All notable changes to wavespeed-cli will be documented in this file.
 
+# [1.3.0](https://github.com/aditzel/wavespeed-cli/compare/v1.2.1...v1.3.0) (2025-12-02)
+
+
+### Features
+
+* expose model pricing and add MCP E2E tests ([8d30adb](https://github.com/aditzel/wavespeed-cli/commit/8d30adbe09e993fd574f1ce74a957652e81fc973))
+
 ## [1.2.1](https://github.com/aditzel/wavespeed-cli/compare/v1.2.0...v1.2.1) (2025-12-02)
 
 
