@@ -1,9 +1,9 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getModels } from "../api/client";
+import { ModelCache } from "../cache";
 import { loadConfig } from "../config/load";
 import { ConfigError, resolveModel } from "../config/models";
-import { type RegistryModel, getAllRegistryModels } from "../config/registry";
+import { getAllRegistryModels, type RegistryModel } from "../config/registry";
 import {
   createMCPError,
   editImage,
@@ -33,7 +33,10 @@ export function registerTools(server: McpServer): void {
 }
 
 /**
- * List models tool - discover available models
+ * List models tool - discover available models with smart defaults and filtering
+ *
+ * Default response (no filters): Returns summary stats + recommended models (~600 tokens)
+ * With filters: Returns matching models up to limit
  */
 function registerListModelsTool(server: McpServer): void {
   server.registerTool(
@@ -42,69 +45,129 @@ function registerListModelsTool(server: McpServer): void {
       title: "List Models",
       description:
         "List available Wavespeed AI models with their capabilities. Call this to discover valid model IDs before using generate/edit tools.",
-      inputSchema: {},
+      inputSchema: {
+        type: z
+          .string()
+          .optional()
+          .describe("Filter by model type (e.g., 'text-to-image', 'text-to-video')"),
+        search: z
+          .string()
+          .optional()
+          .describe("Search models by name or ID (e.g., 'flux', 'seedream')"),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .default(20)
+          .describe("Maximum models to return (default: 20)"),
+        refresh: z.boolean().default(false).describe("Force refresh from API"),
+      },
     },
-    async () => {
+    async ({ type, search, limit, refresh }) => {
       const apiKey = process.env.WAVESPEED_API_KEY;
 
-      // Try API first, fall back to registry
-      type ApiModel = { model_id: string; name: string; description?: string };
-      let apiModels: ApiModel[] = [];
-
-      if (apiKey) {
-        try {
-          apiModels = (await getModels(apiKey)) as ApiModel[];
-        } catch {
-          // Fall through to registry
-        }
+      // If no API key, fall back to registry
+      if (!apiKey) {
+        return formatRegistryFallback();
       }
 
-      // If we got API models, use those
-      if (apiModels.length > 0) {
-        const models = apiModels.map((m) => ({
-          id: m.model_id,
-          name: m.name,
-          description: m.description,
-        }));
+      const cache = ModelCache.getInstance();
+
+      try {
+        // Load models (from cache or API)
+        await cache.getModels(apiKey, { forceRefresh: refresh });
+
+        // No filters = return smart summary
+        if (!type && !search) {
+          const summary = cache.getSummary();
+          const recommended = await cache.getRecommendedModelsAsync();
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify({
+                  summary: {
+                    totalModels: summary.totalModels,
+                    types: summary.types,
+                    typeCount: summary.typeCount,
+                    typeCounts: summary.typeCounts,
+                  },
+                  recommended: recommended.map((r) => ({
+                    id: r.id,
+                    type: r.type,
+                    desc: r.desc,
+                  })),
+                  usage:
+                    "Use 'type' or 'search' params to filter. Use model 'id' in generate/edit tools.",
+                  source: "api_cached",
+                }),
+              },
+            ],
+          };
+        }
+
+        // With filters = return filtered list
+        const filtered = cache.filterModels({ type, search, limit });
 
         return {
           content: [
             {
               type: "text" as const,
               text: JSON.stringify({
-                models,
-                source: "api",
-                note: "Use model 'id' as the 'model' parameter in generate/edit tools",
+                models: filtered.map((m) => ({
+                  id: m.model_id,
+                  name: m.name,
+                  type: m.type,
+                })),
+                meta: {
+                  total: type
+                    ? cache.getTypeCounts()[type] || 0
+                    : search
+                      ? cache.searchModels(search).length
+                      : cache.getModelCount(),
+                  returned: filtered.length,
+                  filter: { ...(type && { type }), ...(search && { search }) },
+                },
+                source: "api_cached",
               }),
             },
           ],
         };
+      } catch {
+        // API/cache failed, fall back to registry
+        return formatRegistryFallback();
       }
-
-      // Fall back to hardcoded registry
-      const registryModels: RegistryModel[] = getAllRegistryModels();
-      const models = registryModels.map((m) => ({
-        id: m.id,
-        name: m.name,
-        description: m.description,
-        capabilities: m.capabilities,
-        recommended: m.isRecommended || false,
-      }));
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({
-              models,
-              source: "registry",
-              note: "Use model 'id' as the 'model' parameter in generate/edit tools",
-            }),
-          },
-        ],
-      };
     },
   );
+}
+
+/**
+ * Format registry fallback response
+ */
+function formatRegistryFallback() {
+  const registryModels: RegistryModel[] = getAllRegistryModels();
+  const models = registryModels.map((m) => ({
+    id: m.id,
+    name: m.name,
+    description: m.description,
+    capabilities: m.capabilities,
+    recommended: m.isRecommended || false,
+  }));
+
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: JSON.stringify({
+          models,
+          source: "registry",
+          note: "API unavailable. Use model 'id' in generate/edit tools.",
+        }),
+      },
+    ],
+  };
 }
 
 /**
