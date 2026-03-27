@@ -4,12 +4,36 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 const apiKey = process.env.WAVESPEED_API_KEY;
-const shouldRun = !!apiKey;
+const shouldRun = !!apiKey && process.env.WAVESPEED_LIVE_E2E === "1";
 
-// Skip all tests if no API key
+interface JsonRpcRequest {
+  jsonrpc: "2.0";
+  id: number;
+  method: string;
+  params: {
+    name: string;
+    arguments: Record<string, unknown>;
+  };
+}
+
+interface JsonRpcResponse {
+  id?: number;
+  error?: unknown;
+  result?: {
+    content: Array<{ text: string }>;
+  };
+}
+
+interface RecommendedModel {
+  id: string;
+  type: string;
+  price?: number;
+}
+
+// Skip all tests unless live API E2E is explicitly enabled.
 describe.skipIf(!shouldRun)("MCP E2E", () => {
   let mcpProcess: ChildProcess;
-  const outputDir = path.join(process.cwd(), "tests", "e2e", "output_" + Date.now());
+  const outputDir = path.join(process.cwd(), "tests", "e2e", `output_${Date.now()}`);
 
   beforeAll(async () => {
     // Ensure output dir exists
@@ -39,7 +63,7 @@ describe.skipIf(!shouldRun)("MCP E2E", () => {
   });
 
   // Helper to send request
-  const sendRequest = (request: any): Promise<any> => {
+  const sendRequest = (request: JsonRpcRequest): Promise<JsonRpcResponse> => {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error("Request timed out"));
@@ -51,12 +75,12 @@ describe.skipIf(!shouldRun)("MCP E2E", () => {
         for (const line of lines) {
           if (!line.trim()) continue;
           try {
-            const response = JSON.parse(line);
+            const response = JSON.parse(line) as JsonRpcResponse;
             if (response.id === request.id) {
               resolve(response);
               cleanup();
             }
-          } catch (e) {
+          } catch (_e) {
             // ignore
           }
         }
@@ -68,7 +92,7 @@ describe.skipIf(!shouldRun)("MCP E2E", () => {
       };
 
       mcpProcess.stdout?.on("data", onData);
-      mcpProcess.stdin?.write(JSON.stringify(request) + "\n");
+      mcpProcess.stdin?.write(`${JSON.stringify(request)}\n`);
     });
   };
 
@@ -94,7 +118,9 @@ describe.skipIf(!shouldRun)("MCP E2E", () => {
 
     // Check that at least one model has a price
     // (Note: some might be undefined if not in cache or API doesn't return them, but usually they do)
-    const hasPrice = content.recommended.some((m: any) => m.price !== undefined);
+    const hasPrice = content.recommended.some(
+      (model: RecommendedModel) => model.price !== undefined,
+    );
     // We expect at least some prices to be populated given our recent changes
     // However, if cache is empty and API fails, it falls back to registry which might not have prices yet?
     // But this is E2E with API key, so it should fetch from API.
@@ -116,10 +142,12 @@ describe.skipIf(!shouldRun)("MCP E2E", () => {
     const listContent = JSON.parse(listRes.result.content[0].text);
     const recommended = listContent.recommended || [];
 
-    const t2iModels = recommended.filter((m: any) => m.type === "text-to-image");
+    const t2iModels = recommended.filter(
+      (model: RecommendedModel) => model.type === "text-to-image",
+    );
     expect(t2iModels.length).toBeGreaterThan(0);
 
-    const cheapest = t2iModels.sort((a: any, b: any) => {
+    const cheapest = t2iModels.sort((a: RecommendedModel, b: RecommendedModel) => {
       const pA = a.price ?? Infinity;
       const pB = b.price ?? Infinity;
       return pA - pB;
@@ -155,7 +183,7 @@ describe.skipIf(!shouldRun)("MCP E2E", () => {
 
     const imagePath = genContent.images[0].path;
     expect(imagePath).toBeDefined();
-    
+
     // Check file existence
     const exists = fs.existsSync(imagePath);
     expect(exists).toBe(true);

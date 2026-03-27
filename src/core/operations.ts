@@ -1,4 +1,4 @@
-import { endpoints, submitTask } from "../api/client";
+import { submitTask } from "../api/client";
 import { pollUntilDone } from "../utils/polling";
 import type {
   EditParams,
@@ -19,17 +19,22 @@ export async function generateImage(params: GenerateParams): Promise<OperationRe
     size,
     enable_base64_output: base64Output,
     enable_sync_mode: syncMode,
-    model: model.modelName ?? model.id,
   };
 
   try {
-    console.error(`[DEBUG] generateImage: Submitting task with model=${model.id}, size=${size}, syncMode=${syncMode}`);
-    const created = await submitTask(model, endpoints.generate, payload);
-    console.error(`[DEBUG] generateImage: Task submitted, id=${created.id}, status=${created.status}`);
+    console.error(
+      `[DEBUG] generateImage: Submitting task with model=${model.id}, size=${size}, syncMode=${syncMode}`,
+    );
+    const created = await submitTask(model, "generate", payload);
+    console.error(
+      `[DEBUG] generateImage: Task submitted, id=${created.id}, status=${created.status}`,
+    );
     const final = await pollUntilDone(model, created.id);
 
     if (final.status === "failed") {
-      console.error(`[DEBUG] generateImage: Task ${final.id} failed: ${final.error || "Unknown error"}`);
+      console.error(
+        `[DEBUG] generateImage: Task ${final.id} failed: ${final.error || "Unknown error"}`,
+      );
       return {
         success: false,
         taskId: final.id,
@@ -39,7 +44,9 @@ export async function generateImage(params: GenerateParams): Promise<OperationRe
       };
     }
 
-    console.error(`[DEBUG] generateImage: Task ${final.id} completed successfully, outputs=${final.outputs?.length || 0}`);
+    console.error(
+      `[DEBUG] generateImage: Task ${final.id} completed successfully, outputs=${final.outputs?.length || 0}`,
+    );
     return {
       success: true,
       taskId: final.id,
@@ -79,17 +86,20 @@ export async function editImage(params: EditParams): Promise<OperationResult> {
     size,
     enable_base64_output: base64Output,
     enable_sync_mode: syncMode,
-    model: model.modelName ?? model.id,
   };
 
   try {
-    console.error(`[DEBUG] editImage: Submitting task with model=${model.id}, size=${size}, images=${images.length}, syncMode=${syncMode}`);
-    const created = await submitTask(model, endpoints.edit, payload);
+    console.error(
+      `[DEBUG] editImage: Submitting task with model=${model.id}, size=${size}, images=${images.length}, syncMode=${syncMode}`,
+    );
+    const created = await submitTask(model, "edit", payload);
     console.error(`[DEBUG] editImage: Task submitted, id=${created.id}, status=${created.status}`);
     const final = await pollUntilDone(model, created.id);
 
     if (final.status === "failed") {
-      console.error(`[DEBUG] editImage: Task ${final.id} failed: ${final.error || "Unknown error"}`);
+      console.error(
+        `[DEBUG] editImage: Task ${final.id} failed: ${final.error || "Unknown error"}`,
+      );
       return {
         success: false,
         taskId: final.id,
@@ -99,7 +109,9 @@ export async function editImage(params: EditParams): Promise<OperationResult> {
       };
     }
 
-    console.error(`[DEBUG] editImage: Task ${final.id} completed successfully, outputs=${final.outputs?.length || 0}`);
+    console.error(
+      `[DEBUG] editImage: Task ${final.id} completed successfully, outputs=${final.outputs?.length || 0}`,
+    );
     return {
       success: true,
       taskId: final.id,
@@ -141,17 +153,22 @@ export async function generateSequential(
     size,
     enable_base64_output: base64Output,
     enable_sync_mode: syncMode,
-    model: model.modelName ?? model.id,
   };
 
   try {
-    console.error(`[DEBUG] generateSequential: Submitting task with model=${model.id}, maxImages=${maxImages}, size=${size}, syncMode=${syncMode}`);
-    const created = await submitTask(model, endpoints.generateSequential, payload);
-    console.error(`[DEBUG] generateSequential: Task submitted, id=${created.id}, status=${created.status}`);
+    console.error(
+      `[DEBUG] generateSequential: Submitting task with model=${model.id}, maxImages=${maxImages}, size=${size}, syncMode=${syncMode}`,
+    );
+    const created = await submitTask(model, "generate-sequential", payload);
+    console.error(
+      `[DEBUG] generateSequential: Task submitted, id=${created.id}, status=${created.status}`,
+    );
     const final = await pollUntilDone(model, created.id);
 
     if (final.status === "failed") {
-      console.error(`[DEBUG] generateSequential: Task ${final.id} failed: ${final.error || "Unknown error"}`);
+      console.error(
+        `[DEBUG] generateSequential: Task ${final.id} failed: ${final.error || "Unknown error"}`,
+      );
       return {
         success: false,
         taskId: final.id,
@@ -161,7 +178,9 @@ export async function generateSequential(
       };
     }
 
-    console.error(`[DEBUG] generateSequential: Task ${final.id} completed successfully, outputs=${final.outputs?.length || 0}`);
+    console.error(
+      `[DEBUG] generateSequential: Task ${final.id} completed successfully, outputs=${final.outputs?.length || 0}`,
+    );
     return {
       success: true,
       taskId: final.id,
@@ -202,7 +221,6 @@ export async function editSequential(params: EditSequentialParams): Promise<Oper
     size,
     enable_base64_output: base64Output,
     enable_sync_mode: syncMode,
-    model: model.modelName ?? model.id,
   };
 
   if (images && images.length > 0) {
@@ -210,13 +228,19 @@ export async function editSequential(params: EditSequentialParams): Promise<Oper
   }
 
   try {
-    console.error(`[DEBUG] editSequential: Submitting task with model=${model.id}, maxImages=${maxImages}, size=${size}, images=${images?.length || 0}, syncMode=${syncMode}`);
-    const created = await submitTask(model, endpoints.editSequential, payload);
-    console.error(`[DEBUG] editSequential: Task submitted, id=${created.id}, status=${created.status}`);
+    console.error(
+      `[DEBUG] editSequential: Submitting task with model=${model.id}, maxImages=${maxImages}, size=${size}, images=${images?.length || 0}, syncMode=${syncMode}`,
+    );
+    const created = await submitTask(model, "edit-sequential", payload);
+    console.error(
+      `[DEBUG] editSequential: Task submitted, id=${created.id}, status=${created.status}`,
+    );
     const final = await pollUntilDone(model, created.id);
 
     if (final.status === "failed") {
-      console.error(`[DEBUG] editSequential: Task ${final.id} failed: ${final.error || "Unknown error"}`);
+      console.error(
+        `[DEBUG] editSequential: Task ${final.id} failed: ${final.error || "Unknown error"}`,
+      );
       return {
         success: false,
         taskId: final.id,
@@ -226,7 +250,9 @@ export async function editSequential(params: EditSequentialParams): Promise<Oper
       };
     }
 
-    console.error(`[DEBUG] editSequential: Task ${final.id} completed successfully, outputs=${final.outputs?.length || 0}`);
+    console.error(
+      `[DEBUG] editSequential: Task ${final.id} completed successfully, outputs=${final.outputs?.length || 0}`,
+    );
     return {
       success: true,
       taskId: final.id,

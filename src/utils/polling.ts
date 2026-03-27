@@ -1,6 +1,6 @@
 import { getResult } from "../api/client.ts";
-import type { ResolvedModel } from "../config/types.ts";
 import type { TaskData } from "../api/types.ts";
+import type { ResolvedModel } from "../config/types.ts";
 
 const DEFAULT_POLL_INTERVAL_MS = 2000;
 const MAX_POLL_DURATION_MS = 10 * 60 * 1000; // 10 minutes
@@ -28,16 +28,22 @@ export async function pollUntilDone(
       throw new Error(`Polling timed out after ${maxDurationMs}ms for request ${requestId}`);
     }
 
-    console.error(`[DEBUG] Polling iteration ${iteration} for request ${requestId} (elapsed: ${elapsed}ms)`);
+    console.error(
+      `[DEBUG] Polling iteration ${iteration} for request ${requestId} (elapsed: ${elapsed}ms)`,
+    );
 
     const data = await getResult(model, requestId);
 
     if (data.status === "completed" || data.status === "failed" || data.status === "succeeded") {
-      console.error(`[DEBUG] Polling completed for request ${requestId}: status=${data.status} (${iteration} iterations, ${elapsed}ms)`);
+      console.error(
+        `[DEBUG] Polling completed for request ${requestId}: status=${data.status} (${iteration} iterations, ${elapsed}ms)`,
+      );
       return data;
     }
 
-    console.error(`[DEBUG] Request ${requestId} still processing (status: ${data.status}), waiting ${intervalMs}ms...`);
+    console.error(
+      `[DEBUG] Request ${requestId} still processing (status: ${data.status}), waiting ${intervalMs}ms...`,
+    );
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
 }

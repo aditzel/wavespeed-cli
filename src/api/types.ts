@@ -54,10 +54,6 @@ export interface ModelsListResponse {
 
 export const BASE_URL = "https://api.wavespeed.ai";
 export const endpoints = {
-  generate: "/api/v3/bytedance/seedream-v4",
-  edit: "/api/v3/bytedance/seedream-v4/edit",
-  generateSequential: "/api/v3/bytedance/seedream-v4/sequential",
-  editSequential: "/api/v3/bytedance/seedream-v4/edit-sequential",
   result: (id: string) => `/api/v3/predictions/${id}/result`,
   models: "/api/v3/models",
 };

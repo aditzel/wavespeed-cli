@@ -1,3 +1,4 @@
+import { ModelCache } from "../cache";
 import { ConfigError } from "./load";
 import { getRegistryModel } from "./registry";
 import type { ResolvedModel, ResolvedModelSummary, WavespeedConfig } from "./types";
@@ -21,10 +22,31 @@ const BUILTIN_MODEL_BASE: Omit<ResolvedModel, "apiKey"> = {
   type: "image",
   requestDefaults: {},
   isFromConfig: false,
+  submitMode: "base",
 };
 
+export type ModelCommandName = "generate" | "edit" | "generate-sequential" | "edit-sequential";
+
+export interface ApiModelCacheProvider {
+  getCachedModels(): Promise<Array<{ model_id: string }>>;
+}
+
+function toApiModelCache(models: Array<{ model_id: string }>): ApiModelCache | undefined {
+  return models.length > 0 ? { models } : undefined;
+}
+
+export async function resolveModelForRequest(
+  commandName: ModelCommandName,
+  cliModelFlag: string | undefined,
+  config: WavespeedConfig | undefined,
+  apiModelCacheProvider: ApiModelCacheProvider = ModelCache.getInstance(),
+): Promise<ResolvedModel> {
+  const cachedModels = await apiModelCacheProvider.getCachedModels();
+  return resolveModel(commandName, cliModelFlag, config, toApiModelCache(cachedModels));
+}
+
 export function resolveModel(
-  commandName: "generate" | "edit" | "generate-sequential" | "edit-sequential",
+  commandName: ModelCommandName,
   cliModelFlag: string | undefined,
   config: WavespeedConfig | undefined,
   apiCache?: ApiModelCache,
@@ -38,12 +60,16 @@ export function resolveModel(
       const registryModel = getRegistryModel(cliModelFlag);
       if (registryModel) {
         // Construct a temporary model config from registry
-        return resolveFromConfigModel(cliModelFlag, {
-          provider: registryModel.provider,
-          apiBaseUrl: registryModel.apiBaseUrl,
-          modelName: registryModel.modelName,
-          apiKeyEnv: "WAVESPEED_API_KEY", // Default to standard env
-        });
+        return resolveFromConfigModel(
+          cliModelFlag,
+          {
+            provider: registryModel.provider,
+            apiBaseUrl: registryModel.apiBaseUrl,
+            modelName: registryModel.modelName,
+            apiKeyEnv: "WAVESPEED_API_KEY", // Default to standard env
+          },
+          "base",
+        );
       }
 
       // Check API cache for valid model IDs
@@ -51,20 +77,28 @@ export function resolveModel(
         const apiModel = apiCache.models.find((m) => m.model_id === cliModelFlag);
         if (apiModel) {
           // Model exists in API - construct wavespeed config
-          return resolveFromConfigModel(cliModelFlag, {
-            provider: "wavespeed",
-            modelName: cliModelFlag,
-          });
+          return resolveFromConfigModel(
+            cliModelFlag,
+            {
+              provider: "wavespeed",
+              modelName: cliModelFlag,
+            },
+            "canonical",
+          );
         }
       }
 
       // If model looks like an API model ID (contains '/'), trust it and let API validate
       // This handles cases where cache isn't loaded yet but user knows the model ID
       if (cliModelFlag.includes("/")) {
-        return resolveFromConfigModel(cliModelFlag, {
-          provider: "wavespeed",
-          modelName: cliModelFlag,
-        });
+        return resolveFromConfigModel(
+          cliModelFlag,
+          {
+            provider: "wavespeed",
+            modelName: cliModelFlag,
+          },
+          "canonical",
+        );
       }
 
       throw new ConfigError(
@@ -72,7 +106,7 @@ export function resolveModel(
         3,
       );
     }
-    return resolveFromConfigModel(cliModelFlag, modelConfig);
+    return resolveFromConfigModel(cliModelFlag, modelConfig, "base");
   }
 
   // 2) Command default
@@ -83,31 +117,43 @@ export function resolveModel(
       // Check registry if not in config
       const registryModel = getRegistryModel(cmdDefaultId);
       if (registryModel) {
-        return resolveFromConfigModel(cmdDefaultId, {
-          provider: registryModel.provider,
-          apiBaseUrl: registryModel.apiBaseUrl,
-          modelName: registryModel.modelName,
-          apiKeyEnv: "WAVESPEED_API_KEY",
-        });
+        return resolveFromConfigModel(
+          cmdDefaultId,
+          {
+            provider: registryModel.provider,
+            apiBaseUrl: registryModel.apiBaseUrl,
+            modelName: registryModel.modelName,
+            apiKeyEnv: "WAVESPEED_API_KEY",
+          },
+          "base",
+        );
       }
 
       // Check API cache for valid model IDs
       if (apiCache?.models) {
         const apiModel = apiCache.models.find((m) => m.model_id === cmdDefaultId);
         if (apiModel) {
-          return resolveFromConfigModel(cmdDefaultId, {
-            provider: "wavespeed",
-            modelName: cmdDefaultId,
-          });
+          return resolveFromConfigModel(
+            cmdDefaultId,
+            {
+              provider: "wavespeed",
+              modelName: cmdDefaultId,
+            },
+            "canonical",
+          );
         }
       }
 
       // Trust API model format
       if (cmdDefaultId.includes("/")) {
-        return resolveFromConfigModel(cmdDefaultId, {
-          provider: "wavespeed",
-          modelName: cmdDefaultId,
-        });
+        return resolveFromConfigModel(
+          cmdDefaultId,
+          {
+            provider: "wavespeed",
+            modelName: cmdDefaultId,
+          },
+          "canonical",
+        );
       }
 
       throw new ConfigError(
@@ -115,7 +161,7 @@ export function resolveModel(
         3,
       );
     }
-    return resolveFromConfigModel(cmdDefaultId, modelConfig);
+    return resolveFromConfigModel(cmdDefaultId, modelConfig, "base");
   }
 
   // 3) Global default
@@ -126,31 +172,43 @@ export function resolveModel(
       // Check registry if not in config
       const registryModel = getRegistryModel(globalDefaultId);
       if (registryModel) {
-        return resolveFromConfigModel(globalDefaultId, {
-          provider: registryModel.provider,
-          apiBaseUrl: registryModel.apiBaseUrl,
-          modelName: registryModel.modelName,
-          apiKeyEnv: "WAVESPEED_API_KEY",
-        });
+        return resolveFromConfigModel(
+          globalDefaultId,
+          {
+            provider: registryModel.provider,
+            apiBaseUrl: registryModel.apiBaseUrl,
+            modelName: registryModel.modelName,
+            apiKeyEnv: "WAVESPEED_API_KEY",
+          },
+          "base",
+        );
       }
 
       // Check API cache for valid model IDs
       if (apiCache?.models) {
         const apiModel = apiCache.models.find((m) => m.model_id === globalDefaultId);
         if (apiModel) {
-          return resolveFromConfigModel(globalDefaultId, {
-            provider: "wavespeed",
-            modelName: globalDefaultId,
-          });
+          return resolveFromConfigModel(
+            globalDefaultId,
+            {
+              provider: "wavespeed",
+              modelName: globalDefaultId,
+            },
+            "canonical",
+          );
         }
       }
 
       // Trust API model format
       if (globalDefaultId.includes("/")) {
-        return resolveFromConfigModel(globalDefaultId, {
-          provider: "wavespeed",
-          modelName: globalDefaultId,
-        });
+        return resolveFromConfigModel(
+          globalDefaultId,
+          {
+            provider: "wavespeed",
+            modelName: globalDefaultId,
+          },
+          "canonical",
+        );
       }
 
       throw new ConfigError(
@@ -158,7 +216,7 @@ export function resolveModel(
         3,
       );
     }
-    return resolveFromConfigModel(globalDefaultId, modelConfig);
+    return resolveFromConfigModel(globalDefaultId, modelConfig, "base");
   }
 
   // 4) Built-in fallback
@@ -183,6 +241,7 @@ function resolveFromConfigModel(
     type?: "image" | "chat" | "completion";
     requestDefaults?: ResolvedModel["requestDefaults"];
   },
+  submitMode: ResolvedModel["submitMode"] = "base",
 ): ResolvedModel {
   const provider = model.provider;
 
@@ -224,6 +283,7 @@ function resolveFromConfigModel(
     type,
     requestDefaults,
     isFromConfig: true,
+    submitMode,
   };
 }
 

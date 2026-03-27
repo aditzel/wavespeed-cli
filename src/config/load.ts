@@ -35,7 +35,7 @@ type AnyRecord = Record<string, unknown>;
 
 export function loadConfig(): ConfigLoadResult {
   const cwd = process.cwd();
-  const homeDir = os.homedir();
+  const homeDir = process.env.HOME || os.homedir();
 
   const projectPath = findFirstExisting(cwd, PROJECT_CONFIG_CANDIDATES);
   let configPath: string | undefined = projectPath;

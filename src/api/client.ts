@@ -1,4 +1,5 @@
 import type { ResolvedModel } from "../config/types";
+import type { CommandType } from "../core/types";
 import { type ApiEnvelope, endpoints, type TaskData } from "./types.ts";
 
 async function httpJson(
@@ -47,10 +48,14 @@ async function httpJson(
 
 export async function submitTask(
   model: ResolvedModel,
-  path: string,
-  payload: unknown,
+  command: CommandType,
+  payload: Record<string, unknown>,
 ): Promise<TaskData> {
-  return httpJson("POST", model, path, payload);
+  const target = buildSubmitTarget(model, command);
+  return httpJson("POST", model, target.path, {
+    ...payload,
+    model: target.model,
+  });
 }
 
 export async function getResult(model: ResolvedModel, requestId: string): Promise<TaskData> {
@@ -93,6 +98,30 @@ export async function getModels(apiKey: string): Promise<unknown[]> {
     console.error(`[DEBUG] Exception fetching models: ${(err as Error).message}`);
     throw new Error(`Failed to fetch models: ${(err as Error).message}`);
   }
+}
+
+export function buildSubmitTarget(
+  model: ResolvedModel,
+  command: CommandType,
+): { model: string; path: string } {
+  const modelRef = model.modelName ?? model.id;
+
+  const suffix =
+    model.submitMode === "canonical"
+      ? ""
+      : {
+          generate: "",
+          edit: "/edit",
+          "generate-sequential": "/sequential",
+          "edit-sequential": "/edit-sequential",
+        }[command];
+
+  const canonicalModel = `${modelRef}${suffix}`;
+
+  return {
+    model: canonicalModel,
+    path: `/api/v3/${canonicalModel}`,
+  };
 }
 
 export { endpoints };

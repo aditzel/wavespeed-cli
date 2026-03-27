@@ -327,6 +327,24 @@ export class ModelCache {
   }
 
   /**
+   * Get cached models without triggering a network refresh
+   */
+  async getCachedModels(): Promise<CachedModel[]> {
+    if (this.data) {
+      return this.data.models;
+    }
+
+    const fileData = await this.loadFromFile();
+    if (fileData) {
+      this.data = fileData;
+      this.memoryLoadedAt = Date.now();
+      return fileData.models;
+    }
+
+    return [];
+  }
+
+  /**
    * Invalidate cache (clear memory and file)
    */
   invalidate(): void {

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { endpoints, getResult, submitTask } from "../../src/api/client.ts";
+import { buildSubmitTarget, endpoints, getResult, submitTask } from "../../src/api/client.ts";
 import type { ResolvedModel } from "../../src/config/types";
 
 const testModel: ResolvedModel = {
@@ -12,6 +12,20 @@ const testModel: ResolvedModel = {
   type: "image",
   requestDefaults: {},
   isFromConfig: false,
+  submitMode: "base",
+};
+
+const canonicalModel: ResolvedModel = {
+  id: "google/nano-banana-2/text-to-image",
+  provider: "wavespeed",
+  apiBaseUrl: "https://api.wavespeed.ai",
+  apiKeyEnv: "WAVESPEED_API_KEY",
+  apiKey: "test-api-key",
+  modelName: "google/nano-banana-2/text-to-image",
+  type: "image",
+  requestDefaults: {},
+  isFromConfig: true,
+  submitMode: "canonical",
 };
 
 describe("API Client", () => {
@@ -38,7 +52,10 @@ describe("API Client", () => {
         const method = options?.method || "GET";
 
         // Mock successful responses
-        if (urlStr === `https://api.wavespeed.ai${endpoints.edit}` && method === "POST") {
+        if (
+          urlStr === `https://api.wavespeed.ai${buildSubmitTarget(testModel, "edit").path}` &&
+          method === "POST"
+        ) {
           return new Response(
             JSON.stringify({
               data: {
@@ -110,7 +127,7 @@ describe("API Client", () => {
         enable_sync_mode: false,
       };
 
-      const result = await submitTask(testModel, endpoints.edit, payload);
+      const result = await submitTask(testModel, "edit", payload);
 
       expect(result.id).toBe("test-task-123");
       expect(result.status).toBe("created");
@@ -127,22 +144,41 @@ describe("API Client", () => {
     });
 
     it("should handle HTTP errors", async () => {
-      await expect(submitTask(testModel, "/error", {})).rejects.toThrow(
+      globalThis.fetch = async () =>
+        new Response(
+          JSON.stringify({
+            error: "Test error message",
+          }),
+          {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          },
+        );
+
+      await expect(submitTask(testModel, "generate", {})).rejects.toThrow(
         "HTTP 400: Test error message",
       );
     });
 
     it("should handle non-JSON responses", async () => {
-      await expect(submitTask(testModel, "/non-json", {})).rejects.toThrow(
+      globalThis.fetch = async () =>
+        new Response("Not JSON", {
+          status: 500,
+          headers: { "content-type": "text/plain" },
+        });
+
+      await expect(submitTask(testModel, "generate", {})).rejects.toThrow(
         "Non JSON response with status 500",
       );
     });
 
-    it("should send correct headers", async () => {
+    it("should send correct headers and canonical model in the body", async () => {
       let capturedHeaders: Record<string, string> = {};
+      let capturedBody: Record<string, unknown> | undefined;
 
       globalThis.fetch = async (_url: string | URL, options?: RequestInit) => {
         capturedHeaders = Object.fromEntries(Object.entries(options?.headers || {}));
+        capturedBody = JSON.parse((options?.body as string | undefined) || "{}");
 
         return new Response(
           JSON.stringify({
@@ -152,21 +188,78 @@ describe("API Client", () => {
         );
       };
 
-      await submitTask(testModel, endpoints.edit, { test: "data" });
+      await submitTask(testModel, "edit", { test: "data" });
 
       expect(capturedHeaders.Authorization).toBe(`Bearer ${testModel.apiKey}`);
       expect(capturedHeaders["Content-Type"]).toBe("application/json");
       expect(capturedHeaders.Accept).toBe("application/json");
+      expect(capturedBody).toEqual({
+        test: "data",
+        model: "bytedance/seedream-v4/edit",
+      });
+    });
+
+    it("should use canonical raw model ids without rewriting", async () => {
+      let capturedUrl = "";
+      let capturedBody: Record<string, unknown> | undefined;
+
+      globalThis.fetch = async (url: string | URL, options?: RequestInit) => {
+        capturedUrl = url.toString();
+        capturedBody = JSON.parse((options?.body as string | undefined) || "{}");
+
+        return new Response(
+          JSON.stringify({
+            data: { id: "test", status: "created", outputs: [] },
+          }),
+          { status: 200 },
+        );
+      };
+
+      await submitTask(canonicalModel, "generate", { prompt: "test" });
+
+      expect(capturedUrl).toBe(
+        "https://api.wavespeed.ai/api/v3/google/nano-banana-2/text-to-image",
+      );
+      expect(capturedBody?.model).toBe("google/nano-banana-2/text-to-image");
     });
   });
 
-  describe("Endpoints", () => {
-    it("should have correct endpoint URLs", () => {
-      expect(endpoints.generate).toBe("/api/v3/bytedance/seedream-v4");
-      expect(endpoints.edit).toBe("/api/v3/bytedance/seedream-v4/edit");
-      expect(endpoints.generateSequential).toBe("/api/v3/bytedance/seedream-v4/sequential");
-      expect(endpoints.editSequential).toBe("/api/v3/bytedance/seedream-v4/edit-sequential");
+  describe("Submit targets", () => {
+    it("builds derived submit targets for alias models", () => {
+      expect(buildSubmitTarget(testModel, "generate")).toEqual({
+        model: "bytedance/seedream-v4",
+        path: "/api/v3/bytedance/seedream-v4",
+      });
+      expect(buildSubmitTarget(testModel, "edit")).toEqual({
+        model: "bytedance/seedream-v4/edit",
+        path: "/api/v3/bytedance/seedream-v4/edit",
+      });
+      expect(buildSubmitTarget(testModel, "generate-sequential")).toEqual({
+        model: "bytedance/seedream-v4/sequential",
+        path: "/api/v3/bytedance/seedream-v4/sequential",
+      });
+      expect(buildSubmitTarget(testModel, "edit-sequential")).toEqual({
+        model: "bytedance/seedream-v4/edit-sequential",
+        path: "/api/v3/bytedance/seedream-v4/edit-sequential",
+      });
+    });
+
+    it("keeps canonical raw model ids unchanged", () => {
+      expect(buildSubmitTarget(canonicalModel, "generate")).toEqual({
+        model: "google/nano-banana-2/text-to-image",
+        path: "/api/v3/google/nano-banana-2/text-to-image",
+      });
+      expect(buildSubmitTarget(canonicalModel, "edit")).toEqual({
+        model: "google/nano-banana-2/text-to-image",
+        path: "/api/v3/google/nano-banana-2/text-to-image",
+      });
+    });
+  });
+
+  describe("Static endpoints", () => {
+    it("should keep the non-submit endpoint URLs", () => {
       expect(endpoints.result("test-123")).toBe("/api/v3/predictions/test-123/result");
+      expect(endpoints.models).toBe("/api/v3/models");
     });
   });
 });
