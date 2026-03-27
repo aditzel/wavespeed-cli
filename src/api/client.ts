@@ -46,6 +46,10 @@ async function httpJson(
   return json as TaskData;
 }
 
+/**
+ * Submit a generation task using a command-specific route derived from the
+ * resolved model metadata.
+ */
 export async function submitTask(
   model: ResolvedModel,
   command: CommandType,
@@ -62,6 +66,10 @@ export async function getResult(model: ResolvedModel, requestId: string): Promis
   return httpJson("GET", model, endpoints.result(requestId));
 }
 
+/**
+ * Fetch the global Wavespeed model catalog used for cache refreshes and model
+ * discovery.
+ */
 export async function getModels(apiKey: string): Promise<unknown[]> {
   // This endpoint is global, not tied to a specific model config
   // We use the default Wavespeed API base URL
@@ -100,6 +108,9 @@ export async function getModels(apiKey: string): Promise<unknown[]> {
   }
 }
 
+/**
+ * Build the canonical model route segment and submit path for a command.
+ */
 export function buildSubmitTarget(
   model: ResolvedModel,
   command: CommandType,

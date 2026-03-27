@@ -45,7 +45,11 @@ describe("config/load", () => {
 
   afterEach(() => {
     process.chdir(ORIGINAL_CWD);
-    process.env.HOME = ORIGINAL_HOME;
+    if (ORIGINAL_HOME === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = ORIGINAL_HOME;
+    }
   });
 
   it("returns undefined config when no config file exists", () => {

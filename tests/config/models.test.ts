@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "bun:test";
+import { buildSubmitTarget } from "../../src/api/client.ts";
 import {
   ConfigError,
   listModels,
@@ -304,6 +305,31 @@ describe("config/models.resolveModelForRequest", () => {
     expect(resolved.id).toBe("seedream-v4");
     expect(resolved.modelName).toBe("bytedance/seedream-v4");
     expect(resolved.submitMode).toBe("base");
+  });
+
+  it("preserves canonical model names from configured aliases", async () => {
+    process.env.WAVESPEED_API_KEY = "test-key";
+
+    const resolved = await resolveModelForRequest(
+      "edit",
+      "banana-edit",
+      makeConfig({
+        models: {
+          "banana-edit": {
+            provider: "wavespeed",
+            modelName: "google/nano-banana-2/edit",
+          },
+        },
+      }),
+      makeCacheProvider(),
+    );
+
+    expect(resolved.modelName).toBe("google/nano-banana-2/edit");
+    expect(resolved.submitMode).toBe("canonical");
+    expect(buildSubmitTarget(resolved, "edit")).toEqual({
+      model: "google/nano-banana-2/edit",
+      path: "/api/v3/google/nano-banana-2/edit",
+    });
   });
 
   it("accepts cached API model ids without requiring config", async () => {

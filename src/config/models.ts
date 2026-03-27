@@ -12,6 +12,18 @@ export interface ApiModelCache {
 }
 
 const BUILTIN_MODEL_ID = "seedream-v4";
+const CANONICAL_MODEL_SUFFIXES = [
+  "/edit",
+  "/sequential",
+  "/edit-sequential",
+  "/text-to-image",
+  "/image-to-image",
+  "/image-to-video",
+  "/text-to-video",
+  "/video-to-video",
+  "/text-to-audio",
+  "/audio-to-video",
+];
 
 const BUILTIN_MODEL_BASE: Omit<ResolvedModel, "apiKey"> = {
   id: BUILTIN_MODEL_ID,
@@ -25,8 +37,14 @@ const BUILTIN_MODEL_BASE: Omit<ResolvedModel, "apiKey"> = {
   submitMode: "base",
 };
 
+/**
+ * Commands that submit model-backed generation tasks.
+ */
 export type ModelCommandName = "generate" | "edit" | "generate-sequential" | "edit-sequential";
 
+/**
+ * Minimal cache interface shared by CLI and MCP model resolution.
+ */
 export interface ApiModelCacheProvider {
   getCachedModels(): Promise<Array<{ model_id: string }>>;
 }
@@ -35,6 +53,10 @@ function toApiModelCache(models: Array<{ model_id: string }>): ApiModelCache | u
   return models.length > 0 ? { models } : undefined;
 }
 
+/**
+ * Resolve the requested model using cached API metadata when available, without
+ * forcing a network fetch during normal CLI execution.
+ */
 export async function resolveModelForRequest(
   commandName: ModelCommandName,
   cliModelFlag: string | undefined,
@@ -45,6 +67,10 @@ export async function resolveModelForRequest(
   return resolveModel(commandName, cliModelFlag, config, toApiModelCache(cachedModels));
 }
 
+/**
+ * Resolve the effective model for a command using explicit overrides, config
+ * defaults, registry aliases, cached API models, and the built-in fallback.
+ */
 export function resolveModel(
   commandName: ModelCommandName,
   cliModelFlag: string | undefined,
@@ -106,7 +132,7 @@ export function resolveModel(
         3,
       );
     }
-    return resolveFromConfigModel(cliModelFlag, modelConfig, "base");
+    return resolveFromConfigModel(cliModelFlag, modelConfig);
   }
 
   // 2) Command default
@@ -161,7 +187,7 @@ export function resolveModel(
         3,
       );
     }
-    return resolveFromConfigModel(cmdDefaultId, modelConfig, "base");
+    return resolveFromConfigModel(cmdDefaultId, modelConfig);
   }
 
   // 3) Global default
@@ -216,7 +242,7 @@ export function resolveModel(
         3,
       );
     }
-    return resolveFromConfigModel(globalDefaultId, modelConfig, "base");
+    return resolveFromConfigModel(globalDefaultId, modelConfig);
   }
 
   // 4) Built-in fallback
@@ -231,6 +257,25 @@ export function resolveModel(
   };
 }
 
+/**
+ * Config aliases may already point at canonical API route segments such as
+ * `google/nano-banana-2/edit`. Preserve those values so submit routing does not
+ * append a second command suffix.
+ */
+function inferSubmitMode(modelName?: string): ResolvedModel["submitMode"] {
+  if (!modelName) {
+    return "base";
+  }
+
+  return CANONICAL_MODEL_SUFFIXES.some((suffix) => modelName.endsWith(suffix))
+    ? "canonical"
+    : "base";
+}
+
+/**
+ * Normalize a configured or synthesized model reference into the runtime
+ * structure used by the command and MCP layers.
+ */
 function resolveFromConfigModel(
   id: string,
   model: {
@@ -241,7 +286,7 @@ function resolveFromConfigModel(
     type?: "image" | "chat" | "completion";
     requestDefaults?: ResolvedModel["requestDefaults"];
   },
-  submitMode: ResolvedModel["submitMode"] = "base",
+  submitMode: ResolvedModel["submitMode"] = inferSubmitMode(model.modelName),
 ): ResolvedModel {
   const provider = model.provider;
 

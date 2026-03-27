@@ -28,6 +28,19 @@ const canonicalModel: ResolvedModel = {
   submitMode: "canonical",
 };
 
+const configuredCanonicalAlias: ResolvedModel = {
+  id: "banana-edit",
+  provider: "wavespeed",
+  apiBaseUrl: "https://api.wavespeed.ai",
+  apiKeyEnv: "WAVESPEED_API_KEY",
+  apiKey: "test-api-key",
+  modelName: "google/nano-banana-2/edit",
+  type: "image",
+  requestDefaults: {},
+  isFromConfig: true,
+  submitMode: "canonical",
+};
+
 describe("API Client", () => {
   const originalEnv = process.env.WAVESPEED_API_KEY;
   const originalFetch = globalThis.fetch;
@@ -252,6 +265,13 @@ describe("API Client", () => {
       expect(buildSubmitTarget(canonicalModel, "edit")).toEqual({
         model: "google/nano-banana-2/text-to-image",
         path: "/api/v3/google/nano-banana-2/text-to-image",
+      });
+    });
+
+    it("keeps configured canonical aliases unchanged", () => {
+      expect(buildSubmitTarget(configuredCanonicalAlias, "edit")).toEqual({
+        model: "google/nano-banana-2/edit",
+        path: "/api/v3/google/nano-banana-2/edit",
       });
     });
   });
