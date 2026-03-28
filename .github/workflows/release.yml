@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publish_current_version:
+        description: "Publish package.json version if it is tagged but missing from npm"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -14,7 +20,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    if: github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -39,7 +45,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     needs: test
-    if: github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[skip ci]')
+    if: github.ref == 'refs/heads/main' && (github.event_name != 'push' || !contains(github.event.head_commit.message, '[skip ci]'))
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -66,7 +72,34 @@ jobs:
       - name: Update npm for OIDC support
         run: npm install -g npm@latest
 
+      - name: Publish current tagged version
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_current_version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PACKAGE_NAME=$(node --input-type=module -e "import pkg from './package.json' with { type: 'json' }; console.log(pkg.name)")
+          PACKAGE_VERSION=$(node --input-type=module -e "import pkg from './package.json' with { type: 'json' }; console.log(pkg.version)")
+          PACKAGE_TAG="v${PACKAGE_VERSION}"
+
+          if ! git rev-parse "${PACKAGE_TAG}" >/dev/null 2>&1; then
+            echo "Expected git tag ${PACKAGE_TAG} to exist before running recovery publish"
+            exit 1
+          fi
+
+          if npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version >/dev/null 2>&1; then
+            echo "${PACKAGE_NAME}@${PACKAGE_VERSION} is already published"
+          else
+            npm publish --provenance --access public
+          fi
+
+          if gh release view "${PACKAGE_TAG}" >/dev/null 2>&1; then
+            echo "GitHub release ${PACKAGE_TAG} already exists"
+          else
+            gh release create "${PACKAGE_TAG}" --verify-tag --title "${PACKAGE_TAG}" --generate-notes
+          fi
+
       - name: Run semantic-release
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.publish_current_version) }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release

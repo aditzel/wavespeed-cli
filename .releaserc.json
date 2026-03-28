@@ -21,6 +21,7 @@
       "pkgRoot": "."
     }],
     ["@semantic-release/exec", {
+      "analyzeCommitsCmd": "bun scripts/release/fallback-analyze.mjs",
       "prepareCmd": "bun run build"
     }],
     "@semantic-release/github",
