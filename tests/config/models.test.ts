@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it } from "bun:test";
-import { ConfigError, listModels, resolveModel } from "../../src/config/models.ts";
+import { buildSubmitTarget } from "../../src/api/client.ts";
+import {
+  ConfigError,
+  listModels,
+  resolveModel,
+  resolveModelForRequest,
+} from "../../src/config/models.ts";
 import type { ResolvedModelSummary, WavespeedConfig } from "../../src/config/types.ts";
 
 function makeConfig(partial: Partial<WavespeedConfig>): WavespeedConfig {
@@ -15,6 +21,22 @@ function makeConfig(partial: Partial<WavespeedConfig>): WavespeedConfig {
     },
     defaults: {
       ...baseDefaults,
+    },
+  };
+}
+
+function makeCacheProvider(...modelIds: string[]) {
+  return {
+    async getCachedModels() {
+      return modelIds.map((model_id) => ({ model_id }));
+    },
+  };
+}
+
+function makeFailingCacheProvider(message = "cache unavailable") {
+  return {
+    async getCachedModels() {
+      throw new Error(message);
     },
   };
 }
@@ -268,6 +290,132 @@ describe("config/models.resolveModel", () => {
       const ce = err as ConfigError;
       expect(ce.exitCode).toBe(3);
     }
+  });
+});
+
+describe("config/models.resolveModelForRequest", () => {
+  const ORIGINAL_ENV = { ...process.env };
+
+  beforeEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+  });
+
+  it("accepts registry model ids for CLI and MCP parity", async () => {
+    process.env.WAVESPEED_API_KEY = "test-key";
+
+    const resolved = await resolveModelForRequest(
+      "generate",
+      "seedream-v4",
+      undefined,
+      makeCacheProvider(),
+    );
+
+    expect(resolved.id).toBe("seedream-v4");
+    expect(resolved.modelName).toBe("bytedance/seedream-v4");
+    expect(resolved.submitMode).toBe("base");
+  });
+
+  it("preserves canonical model names from configured aliases", async () => {
+    process.env.WAVESPEED_API_KEY = "test-key";
+
+    const resolved = await resolveModelForRequest(
+      "edit",
+      "banana-edit",
+      makeConfig({
+        models: {
+          "banana-edit": {
+            provider: "wavespeed",
+            modelName: "google/nano-banana-2/edit",
+          },
+        },
+      }),
+      makeCacheProvider(),
+    );
+
+    expect(resolved.modelName).toBe("google/nano-banana-2/edit");
+    expect(resolved.submitMode).toBe("canonical");
+    expect(buildSubmitTarget(resolved, "edit")).toEqual({
+      model: "google/nano-banana-2/edit",
+      path: "/api/v3/google/nano-banana-2/edit",
+    });
+  });
+
+  it("preserves canonical routing when the config key is the raw model id", async () => {
+    process.env.WAVESPEED_API_KEY = "test-key";
+
+    const resolved = await resolveModelForRequest(
+      "edit",
+      "google/nano-banana-2/edit",
+      makeConfig({
+        models: {
+          "google/nano-banana-2/edit": {
+            provider: "wavespeed",
+          },
+        },
+      }),
+      makeCacheProvider(),
+    );
+
+    expect(resolved.id).toBe("google/nano-banana-2/edit");
+    expect(resolved.modelName).toBeUndefined();
+    expect(resolved.submitMode).toBe("canonical");
+    expect(buildSubmitTarget(resolved, "edit")).toEqual({
+      model: "google/nano-banana-2/edit",
+      path: "/api/v3/google/nano-banana-2/edit",
+    });
+  });
+
+  it("accepts cached API model ids without requiring config", async () => {
+    process.env.WAVESPEED_API_KEY = "test-key";
+
+    const resolved = await resolveModelForRequest(
+      "generate",
+      "google/nano-banana-2/text-to-image",
+      undefined,
+      makeCacheProvider("google/nano-banana-2/text-to-image"),
+    );
+
+    expect(resolved.id).toBe("google/nano-banana-2/text-to-image");
+    expect(resolved.modelName).toBe("google/nano-banana-2/text-to-image");
+    expect(resolved.submitMode).toBe("canonical");
+  });
+
+  it("accepts raw API model ids when cache is cold", async () => {
+    process.env.WAVESPEED_API_KEY = "test-key";
+
+    const resolved = await resolveModelForRequest(
+      "edit",
+      "google/nano-banana-2/edit",
+      undefined,
+      makeCacheProvider(),
+    );
+
+    expect(resolved.id).toBe("google/nano-banana-2/edit");
+    expect(resolved.modelName).toBe("google/nano-banana-2/edit");
+    expect(resolved.submitMode).toBe("canonical");
+  });
+
+  it("rejects unknown plain model ids when cache is cold", async () => {
+    process.env.WAVESPEED_API_KEY = "test-key";
+
+    await expect(
+      resolveModelForRequest("generate", "unknown-model", undefined, makeCacheProvider()),
+    ).rejects.toThrow("Unknown model 'unknown-model'");
+  });
+
+  it("falls back to normal resolution when cache reads fail", async () => {
+    process.env.WAVESPEED_API_KEY = "test-key";
+
+    const resolved = await resolveModelForRequest(
+      "generate",
+      undefined,
+      undefined,
+      makeFailingCacheProvider(),
+    );
+
+    expect(resolved.id).toBe("seedream-v4");
+    expect(resolved.modelName).toBe("bytedance/seedream-v4");
+    expect(resolved.submitMode).toBe("base");
   });
 });
 

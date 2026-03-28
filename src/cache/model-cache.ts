@@ -327,6 +327,26 @@ export class ModelCache {
   }
 
   /**
+   * Return cached models from memory or disk without forcing a network refresh.
+   * This is used by model resolution so CLI and MCP can validate model IDs
+   * consistently while still keeping normal command startup offline-friendly.
+   */
+  async getCachedModels(): Promise<CachedModel[]> {
+    if (this.data) {
+      return this.data.models;
+    }
+
+    const fileData = await this.loadFromFile();
+    if (fileData) {
+      this.data = fileData;
+      this.memoryLoadedAt = Date.now();
+      return fileData.models;
+    }
+
+    return [];
+  }
+
+  /**
    * Invalidate cache (clear memory and file)
    */
   invalidate(): void {

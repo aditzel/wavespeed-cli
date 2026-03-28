@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6,6 +6,7 @@ import { ConfigError, loadConfig } from "../../src/config/load.ts";
 import type { WavespeedConfig } from "../../src/config/types.ts";
 
 const ORIGINAL_CWD = process.cwd();
+const ORIGINAL_HOME = process.env.HOME;
 const TMP_ROOT = path.join(os.tmpdir(), "wavespeed-load-tests");
 
 function writeFile(relPath: string, content: string) {
@@ -37,8 +38,18 @@ describe("config/load", () => {
       fs.mkdirSync(TMP_ROOT, { recursive: true });
     }
     process.chdir(TMP_ROOT);
+    process.env.HOME = TMP_ROOT;
     // Clear relevant env between tests
     delete process.env.TEST_API_KEY;
+  });
+
+  afterEach(() => {
+    process.chdir(ORIGINAL_CWD);
+    if (ORIGINAL_HOME === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = ORIGINAL_HOME;
+    }
   });
 
   it("returns undefined config when no config file exists", () => {
@@ -188,7 +199,7 @@ describe("config/load", () => {
 
   it("prefers project config over home config", () => {
     // Simulate a home config, then a project config; loader should prefer project.
-    const homeDir = os.homedir();
+    const homeDir = process.env.HOME || os.homedir();
     const homeCfgPath = path.join(homeDir, ".wavespeedrc.json");
     const originalHomeExists = fs.existsSync(homeCfgPath);
     let backup: string | undefined;
@@ -225,7 +236,6 @@ describe("config/load", () => {
       } else if (fs.existsSync(homeCfgPath)) {
         fs.unlinkSync(homeCfgPath);
       }
-      process.chdir(ORIGINAL_CWD);
       if (fs.existsSync(TMP_ROOT)) {
         cleanupDir(TMP_ROOT);
         fs.rmdirSync(TMP_ROOT);

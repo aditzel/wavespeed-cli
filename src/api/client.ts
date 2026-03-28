@@ -1,4 +1,5 @@
 import type { ResolvedModel } from "../config/types";
+import type { CommandType } from "../core/types";
 import { type ApiEnvelope, endpoints, type TaskData } from "./types.ts";
 
 async function httpJson(
@@ -45,18 +46,33 @@ async function httpJson(
   return json as TaskData;
 }
 
+/**
+ * Submit a generation task using a command-specific route derived from the
+ * resolved model metadata.
+ */
 export async function submitTask(
   model: ResolvedModel,
-  path: string,
-  payload: unknown,
+  command: CommandType,
+  payload: Record<string, unknown>,
 ): Promise<TaskData> {
-  return httpJson("POST", model, path, payload);
+  const target = buildSubmitTarget(model, command);
+  return httpJson("POST", model, target.path, {
+    ...payload,
+    model: target.model,
+  });
 }
 
+/**
+ * Fetch the latest state for a previously submitted task.
+ */
 export async function getResult(model: ResolvedModel, requestId: string): Promise<TaskData> {
   return httpJson("GET", model, endpoints.result(requestId));
 }
 
+/**
+ * Fetch the global Wavespeed model catalog used for cache refreshes and model
+ * discovery.
+ */
 export async function getModels(apiKey: string): Promise<unknown[]> {
   // This endpoint is global, not tied to a specific model config
   // We use the default Wavespeed API base URL
@@ -93,6 +109,33 @@ export async function getModels(apiKey: string): Promise<unknown[]> {
     console.error(`[DEBUG] Exception fetching models: ${(err as Error).message}`);
     throw new Error(`Failed to fetch models: ${(err as Error).message}`);
   }
+}
+
+/**
+ * Build the canonical model route segment and submit path for a command.
+ */
+export function buildSubmitTarget(
+  model: ResolvedModel,
+  command: CommandType,
+): { model: string; path: string } {
+  const modelRef = model.modelName ?? model.id;
+
+  const suffix =
+    model.submitMode === "canonical"
+      ? ""
+      : {
+          generate: "",
+          edit: "/edit",
+          "generate-sequential": "/sequential",
+          "edit-sequential": "/edit-sequential",
+        }[command];
+
+  const canonicalModel = `${modelRef}${suffix}`;
+
+  return {
+    model: canonicalModel,
+    path: `/api/v3/${canonicalModel}`,
+  };
 }
 
 export { endpoints };

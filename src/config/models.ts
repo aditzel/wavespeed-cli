@@ -1,3 +1,4 @@
+import { ModelCache } from "../cache";
 import { ConfigError } from "./load";
 import { getRegistryModel } from "./registry";
 import type { ResolvedModel, ResolvedModelSummary, WavespeedConfig } from "./types";
@@ -11,6 +12,18 @@ export interface ApiModelCache {
 }
 
 const BUILTIN_MODEL_ID = "seedream-v4";
+const CANONICAL_MODEL_SUFFIXES = [
+  "/edit",
+  "/sequential",
+  "/edit-sequential",
+  "/text-to-image",
+  "/image-to-image",
+  "/image-to-video",
+  "/text-to-video",
+  "/video-to-video",
+  "/text-to-audio",
+  "/audio-to-video",
+];
 
 const BUILTIN_MODEL_BASE: Omit<ResolvedModel, "apiKey"> = {
   id: BUILTIN_MODEL_ID,
@@ -21,144 +34,88 @@ const BUILTIN_MODEL_BASE: Omit<ResolvedModel, "apiKey"> = {
   type: "image",
   requestDefaults: {},
   isFromConfig: false,
+  submitMode: "base",
 };
 
+/**
+ * Commands that submit model-backed generation tasks.
+ */
+export type ModelCommandName = "generate" | "edit" | "generate-sequential" | "edit-sequential";
+
+/**
+ * Minimal cache interface shared by CLI and MCP model resolution.
+ */
+export interface ApiModelCacheProvider {
+  getCachedModels(): Promise<Array<{ model_id: string }>>;
+}
+
+function toApiModelCache(models: Array<{ model_id: string }>): ApiModelCache | undefined {
+  return models.length > 0 ? { models } : undefined;
+}
+
+/**
+ * Resolve the requested model using cached API metadata when available, without
+ * forcing a network fetch during normal CLI execution.
+ */
+export async function resolveModelForRequest(
+  commandName: ModelCommandName,
+  cliModelFlag: string | undefined,
+  config: WavespeedConfig | undefined,
+  apiModelCacheProvider: ApiModelCacheProvider = ModelCache.getInstance(),
+): Promise<ResolvedModel> {
+  let apiCache: ApiModelCache | undefined;
+
+  try {
+    const cachedModels = await apiModelCacheProvider.getCachedModels();
+    apiCache = toApiModelCache(cachedModels);
+  } catch {
+    // Cache metadata is an optional optimization. Resolution must still succeed
+    // through config, registry, or built-in defaults when cache reads fail.
+  }
+
+  return resolveModel(commandName, cliModelFlag, config, apiCache);
+}
+
+/**
+ * Resolve the effective model for a command using explicit overrides, config
+ * defaults, registry aliases, cached API models, and the built-in fallback.
+ */
 export function resolveModel(
-  commandName: "generate" | "edit" | "generate-sequential" | "edit-sequential",
+  commandName: ModelCommandName,
   cliModelFlag: string | undefined,
   config: WavespeedConfig | undefined,
   apiCache?: ApiModelCache,
 ): ResolvedModel {
   // 1) CLI flag
   if (cliModelFlag) {
-    const modelConfig = config?.models?.[cliModelFlag];
-    // If not in config, check registry then API cache
-    if (!modelConfig) {
-      // Check registry for short aliases (e.g., "seedream-v4")
-      const registryModel = getRegistryModel(cliModelFlag);
-      if (registryModel) {
-        // Construct a temporary model config from registry
-        return resolveFromConfigModel(cliModelFlag, {
-          provider: registryModel.provider,
-          apiBaseUrl: registryModel.apiBaseUrl,
-          modelName: registryModel.modelName,
-          apiKeyEnv: "WAVESPEED_API_KEY", // Default to standard env
-        });
-      }
-
-      // Check API cache for valid model IDs
-      if (apiCache?.models) {
-        const apiModel = apiCache.models.find((m) => m.model_id === cliModelFlag);
-        if (apiModel) {
-          // Model exists in API - construct wavespeed config
-          return resolveFromConfigModel(cliModelFlag, {
-            provider: "wavespeed",
-            modelName: cliModelFlag,
-          });
-        }
-      }
-
-      // If model looks like an API model ID (contains '/'), trust it and let API validate
-      // This handles cases where cache isn't loaded yet but user knows the model ID
-      if (cliModelFlag.includes("/")) {
-        return resolveFromConfigModel(cliModelFlag, {
-          provider: "wavespeed",
-          modelName: cliModelFlag,
-        });
-      }
-
-      throw new ConfigError(
-        `Unknown model '${cliModelFlag}'. Use --list-models to see available models.`,
-        3,
-      );
-    }
-    return resolveFromConfigModel(cliModelFlag, modelConfig);
+    return resolveModelId(
+      cliModelFlag,
+      config,
+      apiCache,
+      `Unknown model '${cliModelFlag}'. Use --list-models to see available models.`,
+    );
   }
 
   // 2) Command default
   const cmdDefaultId = config?.defaults?.commands?.[commandName];
   if (cmdDefaultId) {
-    const modelConfig = config?.models?.[cmdDefaultId];
-    if (!modelConfig) {
-      // Check registry if not in config
-      const registryModel = getRegistryModel(cmdDefaultId);
-      if (registryModel) {
-        return resolveFromConfigModel(cmdDefaultId, {
-          provider: registryModel.provider,
-          apiBaseUrl: registryModel.apiBaseUrl,
-          modelName: registryModel.modelName,
-          apiKeyEnv: "WAVESPEED_API_KEY",
-        });
-      }
-
-      // Check API cache for valid model IDs
-      if (apiCache?.models) {
-        const apiModel = apiCache.models.find((m) => m.model_id === cmdDefaultId);
-        if (apiModel) {
-          return resolveFromConfigModel(cmdDefaultId, {
-            provider: "wavespeed",
-            modelName: cmdDefaultId,
-          });
-        }
-      }
-
-      // Trust API model format
-      if (cmdDefaultId.includes("/")) {
-        return resolveFromConfigModel(cmdDefaultId, {
-          provider: "wavespeed",
-          modelName: cmdDefaultId,
-        });
-      }
-
-      throw new ConfigError(
-        `Invalid config: defaults.commands.${commandName} refers to unknown model '${cmdDefaultId}'.`,
-        3,
-      );
-    }
-    return resolveFromConfigModel(cmdDefaultId, modelConfig);
+    return resolveModelId(
+      cmdDefaultId,
+      config,
+      apiCache,
+      `Invalid config: defaults.commands.${commandName} refers to unknown model '${cmdDefaultId}'.`,
+    );
   }
 
   // 3) Global default
   const globalDefaultId = config?.defaults?.globalModel;
   if (globalDefaultId) {
-    const modelConfig = config?.models?.[globalDefaultId];
-    if (!modelConfig) {
-      // Check registry if not in config
-      const registryModel = getRegistryModel(globalDefaultId);
-      if (registryModel) {
-        return resolveFromConfigModel(globalDefaultId, {
-          provider: registryModel.provider,
-          apiBaseUrl: registryModel.apiBaseUrl,
-          modelName: registryModel.modelName,
-          apiKeyEnv: "WAVESPEED_API_KEY",
-        });
-      }
-
-      // Check API cache for valid model IDs
-      if (apiCache?.models) {
-        const apiModel = apiCache.models.find((m) => m.model_id === globalDefaultId);
-        if (apiModel) {
-          return resolveFromConfigModel(globalDefaultId, {
-            provider: "wavespeed",
-            modelName: globalDefaultId,
-          });
-        }
-      }
-
-      // Trust API model format
-      if (globalDefaultId.includes("/")) {
-        return resolveFromConfigModel(globalDefaultId, {
-          provider: "wavespeed",
-          modelName: globalDefaultId,
-        });
-      }
-
-      throw new ConfigError(
-        `Invalid config: defaults.globalModel '${globalDefaultId}' does not exist in models.`,
-        3,
-      );
-    }
-    return resolveFromConfigModel(globalDefaultId, modelConfig);
+    return resolveModelId(
+      globalDefaultId,
+      config,
+      apiCache,
+      `Invalid config: defaults.globalModel '${globalDefaultId}' does not exist in models.`,
+    );
   }
 
   // 4) Built-in fallback
@@ -173,6 +130,81 @@ export function resolveModel(
   };
 }
 
+/**
+ * Resolve a model identifier through config aliases, built-in registry entries,
+ * cached API metadata, or direct canonical model IDs.
+ */
+function resolveModelId(
+  modelId: string,
+  config: WavespeedConfig | undefined,
+  apiCache: ApiModelCache | undefined,
+  missingModelMessage: string,
+): ResolvedModel {
+  const modelConfig = config?.models?.[modelId];
+  if (modelConfig) {
+    return resolveFromConfigModel(modelId, modelConfig);
+  }
+
+  const registryModel = getRegistryModel(modelId);
+  if (registryModel) {
+    return resolveFromConfigModel(
+      modelId,
+      {
+        provider: registryModel.provider,
+        apiBaseUrl: registryModel.apiBaseUrl,
+        modelName: registryModel.modelName,
+        apiKeyEnv: "WAVESPEED_API_KEY",
+      },
+      "base",
+    );
+  }
+
+  const cachedApiModel = apiCache?.models.find((model) => model.model_id === modelId);
+  if (cachedApiModel) {
+    return resolveFromConfigModel(
+      modelId,
+      {
+        provider: "wavespeed",
+        modelName: modelId,
+      },
+      "canonical",
+    );
+  }
+
+  if (modelId.includes("/")) {
+    return resolveFromConfigModel(
+      modelId,
+      {
+        provider: "wavespeed",
+        modelName: modelId,
+      },
+      "canonical",
+    );
+  }
+
+  throw new ConfigError(missingModelMessage, 3);
+}
+
+/**
+ * Config aliases may already point at canonical API route segments such as
+ * `google/nano-banana-2/edit`. Preserve those values so submit routing does not
+ * append a second command suffix, even when the config omits `modelName` and
+ * relies on the alias key itself.
+ */
+function inferSubmitMode(modelRef?: string): ResolvedModel["submitMode"] {
+  if (!modelRef) {
+    return "base";
+  }
+
+  return CANONICAL_MODEL_SUFFIXES.some((suffix) => modelRef.endsWith(suffix))
+    ? "canonical"
+    : "base";
+}
+
+/**
+ * Normalize a configured or synthesized model reference into the runtime
+ * structure used by the command and MCP layers.
+ */
 function resolveFromConfigModel(
   id: string,
   model: {
@@ -183,6 +215,7 @@ function resolveFromConfigModel(
     type?: "image" | "chat" | "completion";
     requestDefaults?: ResolvedModel["requestDefaults"];
   },
+  submitMode: ResolvedModel["submitMode"] = inferSubmitMode(model.modelName ?? id),
 ): ResolvedModel {
   const provider = model.provider;
 
@@ -224,9 +257,13 @@ function resolveFromConfigModel(
     type,
     requestDefaults,
     isFromConfig: true,
+    submitMode,
   };
 }
 
+/**
+ * List configured model aliases together with default metadata for CLI display.
+ */
 export function listModels(
   config: WavespeedConfig | undefined,
   source?: string,

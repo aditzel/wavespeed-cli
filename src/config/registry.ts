@@ -1,5 +1,8 @@
 import type { ProviderType } from "./types";
 
+/**
+ * Built-in model metadata shipped with the CLI for offline-friendly discovery.
+ */
 export interface RegistryModel {
   id: string;
   name: string;
@@ -35,10 +38,16 @@ export const MODEL_REGISTRY: RegistryModel[] = [
   },
 ];
 
+/**
+ * Look up a single built-in registry model by its short alias.
+ */
 export function getRegistryModel(id: string): RegistryModel | undefined {
   return MODEL_REGISTRY.find((m) => m.id === id);
 }
 
+/**
+ * Return a copy of the built-in model registry.
+ */
 export function getAllRegistryModels(): RegistryModel[] {
   return [...MODEL_REGISTRY];
 }

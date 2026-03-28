@@ -4,6 +4,9 @@ import path from "node:path";
 import YAML from "yaml";
 import type { ConfigLoadResult, ModelConfig, WavespeedConfig } from "./types";
 
+/**
+ * Configuration error with a process exit code suitable for CLI handlers.
+ */
 export class ConfigError extends Error {
   constructor(
     message: string,
@@ -33,9 +36,13 @@ const HOME_CONFIG_CANDIDATES = [
 
 type AnyRecord = Record<string, unknown>;
 
+/**
+ * Load the nearest Wavespeed config from the project directory or HOME and
+ * return the normalized result.
+ */
 export function loadConfig(): ConfigLoadResult {
   const cwd = process.cwd();
-  const homeDir = os.homedir();
+  const homeDir = process.env.HOME || os.homedir();
 
   const projectPath = findFirstExisting(cwd, PROJECT_CONFIG_CANDIDATES);
   let configPath: string | undefined = projectPath;

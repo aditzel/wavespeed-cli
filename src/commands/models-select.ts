@@ -7,6 +7,9 @@ import { loadConfig } from "../config/load";
 import { getAllRegistryModels } from "../config/registry";
 import type { WavespeedConfig } from "../config/types";
 
+/**
+ * Register the interactive model selection command.
+ */
 export function registerModelsSelect(program: Command) {
   program
     .command("models-select")

@@ -185,7 +185,9 @@ Key points:
       - Environment variable name holding the API key.
       - Defaults to `WAVESPEED_API_KEY` for `wavespeed` if omitted.
     - `modelName`:
-      - Remote model identifier (e.g. `"bytedance/seedream-v4"`).
+      - Base remote model identifier for configured aliases (e.g. `"bytedance/seedream-v4"`).
+      - The CLI/MCP derive command-specific routes such as `/edit` or `/sequential` from this value.
+      - If you want to use a fully canonical, operation-specific model ID such as `"google/nano-banana-2/text-to-image"`, pass it directly with `--model` instead of storing it as an ergonomic cross-command alias.
     - `type`, `requestDefaults`:
       - Optional and currently not required by core commands.
 - `defaults`:
@@ -322,8 +324,11 @@ For sequential commands:
 Model selection for each command follows:
 
 1. CLI flag `--model <id>`:
-   - Must match a model defined in `models`.
-   - If unknown: configuration error (exit code 3).
+   - Accepts:
+     - a configured model alias from `models`
+     - a built-in registry id such as `seedream-v4`
+     - a raw Wavespeed API model id such as `google/nano-banana-2/text-to-image`
+   - Unknown plain ids still fail with configuration error (exit code 3).
 2. Command-level default:
    - `defaults.commands[commandName]` if present.
 3. Global default:
@@ -342,6 +347,9 @@ wavespeed generate --prompt "A cat in space"
 
 # Use a specific configured model for one run
 wavespeed generate --model my-alt-model --prompt "A dragon in neon lights"
+
+# Use a raw Wavespeed API model id directly
+wavespeed generate --model google/nano-banana-2/text-to-image --prompt "A dragon in neon lights"
 
 # Global model override via config only
 wavespeed edit --prompt "style it" --images "https://example.com/img.png"

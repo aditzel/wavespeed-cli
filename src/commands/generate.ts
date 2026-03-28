@@ -1,9 +1,12 @@
 import type { Command } from "commander";
 import { loadConfig } from "../config/load";
-import { ConfigError, resolveModel } from "../config/models";
+import { ConfigError, resolveModelForRequest } from "../config/models";
 import { formatForCLI, generateImage } from "../core";
 import { ensurePrompt, parseSize } from "../utils/validation.ts";
 
+/**
+ * Register the `generate` CLI command.
+ */
 export function registerGenerate(program: Command) {
   program
     .command("generate")
@@ -15,6 +18,7 @@ export function registerGenerate(program: Command) {
       "Directory to save downloaded images (default: ./output/)",
       "./output/",
     )
+    .option("--model <modelId>", "Select model id (overrides config defaults)")
     .option("--base64", "Request base64 outputs from API (auto-decoded and saved)")
     .option("--sync", "Enable synchronous mode (wait for result before returning)")
     .action(async (opts, command) => {
@@ -31,7 +35,7 @@ export function registerGenerate(program: Command) {
         const cliModelFlag = opts.model ?? rootOpts.model;
 
         const { config } = loadConfig();
-        const model = resolveModel("generate", cliModelFlag, config);
+        const model = await resolveModelForRequest("generate", cliModelFlag, config);
 
         // Use core operation
         const result = await generateImage({

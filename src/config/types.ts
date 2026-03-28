@@ -44,6 +44,7 @@ export interface ResolvedModel {
   type: "image" | "chat" | "completion";
   requestDefaults: RequestDefaults;
   isFromConfig: boolean;
+  submitMode: "base" | "canonical";
 }
 
 export interface ConfigLoadResult {
