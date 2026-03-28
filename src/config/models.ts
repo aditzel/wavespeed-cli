@@ -269,14 +269,15 @@ export function resolveModel(
 /**
  * Config aliases may already point at canonical API route segments such as
  * `google/nano-banana-2/edit`. Preserve those values so submit routing does not
- * append a second command suffix.
+ * append a second command suffix, even when the config omits `modelName` and
+ * relies on the alias key itself.
  */
-function inferSubmitMode(modelName?: string): ResolvedModel["submitMode"] {
-  if (!modelName) {
+function inferSubmitMode(modelRef?: string): ResolvedModel["submitMode"] {
+  if (!modelRef) {
     return "base";
   }
 
-  return CANONICAL_MODEL_SUFFIXES.some((suffix) => modelName.endsWith(suffix))
+  return CANONICAL_MODEL_SUFFIXES.some((suffix) => modelRef.endsWith(suffix))
     ? "canonical"
     : "base";
 }
@@ -295,7 +296,7 @@ function resolveFromConfigModel(
     type?: "image" | "chat" | "completion";
     requestDefaults?: ResolvedModel["requestDefaults"];
   },
-  submitMode: ResolvedModel["submitMode"] = inferSubmitMode(model.modelName),
+  submitMode: ResolvedModel["submitMode"] = inferSubmitMode(model.modelName ?? id),
 ): ResolvedModel {
   const provider = model.provider;
 

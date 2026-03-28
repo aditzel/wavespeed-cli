@@ -340,6 +340,31 @@ describe("config/models.resolveModelForRequest", () => {
     });
   });
 
+  it("preserves canonical routing when the config key is the raw model id", async () => {
+    process.env.WAVESPEED_API_KEY = "test-key";
+
+    const resolved = await resolveModelForRequest(
+      "edit",
+      "google/nano-banana-2/edit",
+      makeConfig({
+        models: {
+          "google/nano-banana-2/edit": {
+            provider: "wavespeed",
+          },
+        },
+      }),
+      makeCacheProvider(),
+    );
+
+    expect(resolved.id).toBe("google/nano-banana-2/edit");
+    expect(resolved.modelName).toBeUndefined();
+    expect(resolved.submitMode).toBe("canonical");
+    expect(buildSubmitTarget(resolved, "edit")).toEqual({
+      model: "google/nano-banana-2/edit",
+      path: "/api/v3/google/nano-banana-2/edit",
+    });
+  });
+
   it("accepts cached API model ids without requiring config", async () => {
     process.env.WAVESPEED_API_KEY = "test-key";
 
