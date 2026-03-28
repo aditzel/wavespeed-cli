@@ -2,6 +2,20 @@
 
 All notable changes to wavespeed-cli will be documented in this file.
 
+## [1.3.1](https://github.com/aditzel/wavespeed-cli/compare/v1.3.0...v1.3.1) (2026-03-27)
+
+
+### Bug Fixes
+
+* unify CLI and MCP model resolution and submit routing
+* derive submit URLs from the selected model instead of fixed Seedream V4 endpoints
+* harden config model resolution for canonical ids and cache fallback behavior
+* make live MCP E2E opt-in and stabilize home-config test isolation
+
+### Documentation
+
+* document raw canonical model ids and shared model selection behavior
+
 # [1.3.0](https://github.com/aditzel/wavespeed-cli/compare/v1.2.1...v1.3.0) (2025-12-02)
 
 
