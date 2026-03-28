@@ -33,6 +33,14 @@ function makeCacheProvider(...modelIds: string[]) {
   };
 }
 
+function makeFailingCacheProvider(message = "cache unavailable") {
+  return {
+    async getCachedModels() {
+      throw new Error(message);
+    },
+  };
+}
+
 describe("config/models.resolveModel", () => {
   const ORIGINAL_ENV = { ...process.env };
 
@@ -368,6 +376,21 @@ describe("config/models.resolveModelForRequest", () => {
     await expect(
       resolveModelForRequest("generate", "unknown-model", undefined, makeCacheProvider()),
     ).rejects.toThrow("Unknown model 'unknown-model'");
+  });
+
+  it("falls back to normal resolution when cache reads fail", async () => {
+    process.env.WAVESPEED_API_KEY = "test-key";
+
+    const resolved = await resolveModelForRequest(
+      "generate",
+      undefined,
+      undefined,
+      makeFailingCacheProvider(),
+    );
+
+    expect(resolved.id).toBe("seedream-v4");
+    expect(resolved.modelName).toBe("bytedance/seedream-v4");
+    expect(resolved.submitMode).toBe("base");
   });
 });
 

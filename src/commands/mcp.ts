@@ -1,6 +1,9 @@
 import type { Command } from "commander";
 import { WavespeedMCPServer } from "../mcp";
 
+/**
+ * Register the `mcp` CLI command that starts the stdio MCP server.
+ */
 export function registerMCP(program: Command) {
   program
     .command("mcp")

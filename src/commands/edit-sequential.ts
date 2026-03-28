@@ -4,6 +4,9 @@ import { ConfigError, resolveModelForRequest } from "../config/models";
 import { editSequential, formatForCLI } from "../core";
 import { ensurePrompt, parseImagesList, parseMaxImages, parseSize } from "../utils/validation.ts";
 
+/**
+ * Register the `edit-sequential` CLI command.
+ */
 export function registerEditSequential(program: Command) {
   program
     .command("edit-sequential")

@@ -2,10 +2,16 @@ import { Buffer } from "node:buffer";
 import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 
+/**
+ * Ensure the destination directory for saved outputs exists.
+ */
 export async function ensureOutputDir(dir: string): Promise<void> {
   await mkdir(dir, { recursive: true });
 }
 
+/**
+ * Download an image URL and write it to a local destination path.
+ */
 export async function downloadImageFromUrl(url: string, destPath: string): Promise<void> {
   const res = await fetch(url);
   if (!res.ok) {
@@ -23,16 +29,25 @@ function normalizeBase64(input: string): string {
   return input;
 }
 
+/**
+ * Decode a base64 or data-URI image string and write it to disk.
+ */
 export async function saveBase64Image(base64: string, destPath: string): Promise<void> {
   const normalized = normalizeBase64(base64);
   const buf = Buffer.from(normalized, "base64");
   await Bun.write(destPath, buf);
 }
 
+/**
+ * Return true when the provided string is an HTTP(S) URL.
+ */
 export function isUrl(s: string): boolean {
   return s.startsWith("http://") || s.startsWith("https://");
 }
 
+/**
+ * Check whether a local file path exists.
+ */
 export async function fileExists(filePath: string): Promise<boolean> {
   try {
     await stat(filePath);
@@ -42,12 +57,18 @@ export async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
+/**
+ * Read a local file and encode it as base64 for API submission.
+ */
 export async function convertFileToBase64(filePath: string): Promise<string> {
   const file = Bun.file(filePath);
   const buffer = await file.arrayBuffer();
   return Buffer.from(buffer).toString("base64");
 }
 
+/**
+ * Save every image output to disk, supporting both URL and base64 responses.
+ */
 export async function saveImagesFromOutputs(
   outputs: string[],
   outputDir: string,

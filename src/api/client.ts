@@ -62,6 +62,9 @@ export async function submitTask(
   });
 }
 
+/**
+ * Fetch the latest state for a previously submitted task.
+ */
 export async function getResult(model: ResolvedModel, requestId: string): Promise<TaskData> {
   return httpJson("GET", model, endpoints.result(requestId));
 }

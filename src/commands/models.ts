@@ -5,6 +5,10 @@ import { loadConfig } from "../config/load";
 import { listModels } from "../config/models";
 import { getAllRegistryModels } from "../config/registry";
 
+/**
+ * Register the `models` CLI command for listing configured, built-in, and live
+ * API models.
+ */
 export function registerModels(program: Command) {
   program
     .command("models")

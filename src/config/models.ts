@@ -63,8 +63,17 @@ export async function resolveModelForRequest(
   config: WavespeedConfig | undefined,
   apiModelCacheProvider: ApiModelCacheProvider = ModelCache.getInstance(),
 ): Promise<ResolvedModel> {
-  const cachedModels = await apiModelCacheProvider.getCachedModels();
-  return resolveModel(commandName, cliModelFlag, config, toApiModelCache(cachedModels));
+  let apiCache: ApiModelCache | undefined;
+
+  try {
+    const cachedModels = await apiModelCacheProvider.getCachedModels();
+    apiCache = toApiModelCache(cachedModels);
+  } catch {
+    // Cache metadata is an optional optimization. Resolution must still succeed
+    // through config, registry, or built-in defaults when cache reads fail.
+  }
+
+  return resolveModel(commandName, cliModelFlag, config, apiCache);
 }
 
 /**
@@ -332,6 +341,9 @@ function resolveFromConfigModel(
   };
 }
 
+/**
+ * List configured model aliases together with default metadata for CLI display.
+ */
 export function listModels(
   config: WavespeedConfig | undefined,
   source?: string,

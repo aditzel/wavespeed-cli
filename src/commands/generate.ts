@@ -4,6 +4,9 @@ import { ConfigError, resolveModelForRequest } from "../config/models";
 import { formatForCLI, generateImage } from "../core";
 import { ensurePrompt, parseSize } from "../utils/validation.ts";
 
+/**
+ * Register the `generate` CLI command.
+ */
 export function registerGenerate(program: Command) {
   program
     .command("generate")

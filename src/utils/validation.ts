@@ -1,11 +1,17 @@
 import { convertFileToBase64, fileExists, isUrl } from "./images.ts";
 
+/**
+ * Validate that a prompt-like input contains non-empty text.
+ */
 export function ensurePrompt(p: unknown): string {
   const s = String(p ?? "").trim();
   if (!s) throw new Error("Prompt is required");
   return s;
 }
 
+/**
+ * Parse and validate a WIDTH*HEIGHT image size string.
+ */
 export function parseSize(input: unknown, defaultSize = "2048*2048"): string {
   let raw: string;
   if (input === null || input === undefined || input === "") {
@@ -26,6 +32,9 @@ export function parseSize(input: unknown, defaultSize = "2048*2048"): string {
   return `${w}*${h}`;
 }
 
+/**
+ * Parse a comma-separated image list into URLs or base64-encoded file payloads.
+ */
 export async function parseImagesList(
   arg: unknown,
   required: boolean,
@@ -67,6 +76,9 @@ export async function parseImagesList(
   return processedItems;
 }
 
+/**
+ * Parse and validate the max-images argument for sequential operations.
+ */
 export function parseMaxImages(input: unknown, defaultVal = 1): number {
   const n = Number(input ?? defaultVal);
   if (!Number.isInteger(n) || n < 1 || n > 15) {

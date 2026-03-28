@@ -4,6 +4,9 @@ import { ConfigError, resolveModelForRequest } from "../config/models";
 import { editImage, formatForCLI } from "../core";
 import { ensurePrompt, parseImagesList, parseSize } from "../utils/validation.ts";
 
+/**
+ * Register the `edit` CLI command.
+ */
 export function registerEdit(program: Command) {
   program
     .command("edit")

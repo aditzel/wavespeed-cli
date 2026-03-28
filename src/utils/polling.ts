@@ -5,7 +5,9 @@ import type { ResolvedModel } from "../config/types.ts";
 const DEFAULT_POLL_INTERVAL_MS = 2000;
 const MAX_POLL_DURATION_MS = 10 * 60 * 1000; // 10 minutes
 
-// Polling helper that uses the model's API configuration for authenticated requests
+/**
+ * Poll a task until the API returns a terminal state or the timeout is reached.
+ */
 export async function pollUntilDone(
   model: ResolvedModel,
   requestId: string,

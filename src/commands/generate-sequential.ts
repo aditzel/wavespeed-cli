@@ -4,6 +4,9 @@ import { ConfigError, resolveModelForRequest } from "../config/models";
 import { formatForCLI, generateSequential } from "../core";
 import { ensurePrompt, parseMaxImages, parseSize } from "../utils/validation.ts";
 
+/**
+ * Register the `generate-sequential` CLI command.
+ */
 export function registerGenerateSequential(program: Command) {
   program
     .command("generate-sequential")
