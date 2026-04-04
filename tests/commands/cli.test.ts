@@ -85,7 +85,7 @@ describe("CLI Integration Tests", () => {
   const runCLI = async (
     args: string[],
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> => {
-    const process = spawn(["bun", "run", cliEntryPath, ...args], {
+    const spawnedProcess = spawn([process.execPath, "run", cliEntryPath, ...args], {
       cwd: tempDir,
       env: { ...Bun.env, WAVESPEED_API_KEY: "test-cli-key" },
       stdout: "pipe",
@@ -93,16 +93,16 @@ describe("CLI Integration Tests", () => {
     });
 
     const [stdout, stderr] = await Promise.all([
-      new Response(process.stdout).text(),
-      new Response(process.stderr).text(),
+      new Response(spawnedProcess.stdout).text(),
+      new Response(spawnedProcess.stderr).text(),
     ]);
 
-    await process.exited;
+    await spawnedProcess.exited;
 
     return {
       stdout,
       stderr,
-      exitCode: process.exitCode || 0,
+      exitCode: spawnedProcess.exitCode || 0,
     };
   };
 

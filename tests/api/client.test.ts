@@ -41,6 +41,20 @@ const configuredCanonicalAlias: ResolvedModel = {
   submitMode: "canonical",
 };
 
+const aiRemoverAliasModel: ResolvedModel = {
+  id: "background-remover",
+  provider: "wavespeed",
+  apiBaseUrl: "https://api.wavespeed.ai",
+  apiKeyEnv: "WAVESPEED_API_KEY",
+  apiKey: "test-api-key",
+  modelName: "wavespeed-ai/image-background-remover",
+  apiModelType: "ai-remover",
+  type: "image",
+  requestDefaults: {},
+  isFromConfig: true,
+  submitMode: "base",
+};
+
 describe("API Client", () => {
   const originalEnv = process.env.WAVESPEED_API_KEY;
   const originalFetch = globalThis.fetch;
@@ -272,6 +286,13 @@ describe("API Client", () => {
       expect(buildSubmitTarget(configuredCanonicalAlias, "edit")).toEqual({
         model: "google/nano-banana-2/edit",
         path: "/api/v3/google/nano-banana-2/edit",
+      });
+    });
+
+    it("routes ai-remover aliases through the base model path", () => {
+      expect(buildSubmitTarget(aiRemoverAliasModel, "edit")).toEqual({
+        model: "wavespeed-ai/image-background-remover",
+        path: "/api/v3/wavespeed-ai/image-background-remover",
       });
     });
   });

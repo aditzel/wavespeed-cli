@@ -1,4 +1,5 @@
 import { ModelCache } from "../cache";
+import { inferApiModelType } from "../utils/model-routing.ts";
 import { ConfigError } from "./load";
 import { getRegistryModel } from "./registry";
 import type { ResolvedModel, ResolvedModelSummary, WavespeedConfig } from "./types";
@@ -8,7 +9,7 @@ import type { ResolvedModel, ResolvedModelSummary, WavespeedConfig } from "./typ
  * Used to validate model IDs against the API without tight coupling
  */
 export interface ApiModelCache {
-  models: Array<{ model_id: string }>;
+  models: Array<{ model_id: string; type?: string }>;
 }
 
 const BUILTIN_MODEL_ID = "seedream-v4";
@@ -46,11 +47,44 @@ export type ModelCommandName = "generate" | "edit" | "generate-sequential" | "ed
  * Minimal cache interface shared by CLI and MCP model resolution.
  */
 export interface ApiModelCacheProvider {
-  getCachedModels(): Promise<Array<{ model_id: string }>>;
+  getCachedModels(): Promise<Array<{ model_id: string; type?: string }>>;
 }
 
-function toApiModelCache(models: Array<{ model_id: string }>): ApiModelCache | undefined {
+function toApiModelCache(
+  models: Array<{ model_id: string; type?: string }>,
+): ApiModelCache | undefined {
   return models.length > 0 ? { models } : undefined;
+}
+
+function findCachedModelType(
+  apiCache: ApiModelCache | undefined,
+  ...refs: Array<string | undefined>
+): string | undefined {
+  for (const ref of refs) {
+    if (!ref) {
+      continue;
+    }
+
+    const match = apiCache?.models.find((model) => model.model_id === ref);
+    if (match?.type) {
+      return match.type;
+    }
+  }
+
+  return undefined;
+}
+
+function resolveApiModelType(
+  apiCache: ApiModelCache | undefined,
+  id: string,
+  modelName?: string,
+  configuredType?: string,
+): string | undefined {
+  return (
+    configuredType ??
+    findCachedModelType(apiCache, modelName, id) ??
+    inferApiModelType(modelName ?? id)
+  );
 }
 
 /**
@@ -142,7 +176,12 @@ function resolveModelId(
 ): ResolvedModel {
   const modelConfig = config?.models?.[modelId];
   if (modelConfig) {
-    return resolveFromConfigModel(modelId, modelConfig);
+    return resolveFromConfigModel(
+      modelId,
+      modelConfig,
+      inferSubmitMode(modelConfig.modelName ?? modelId),
+      resolveApiModelType(apiCache, modelId, modelConfig.modelName, modelConfig.apiModelType),
+    );
   }
 
   const registryModel = getRegistryModel(modelId);
@@ -156,6 +195,7 @@ function resolveModelId(
         apiKeyEnv: "WAVESPEED_API_KEY",
       },
       "base",
+      resolveApiModelType(apiCache, modelId, registryModel.modelName),
     );
   }
 
@@ -168,6 +208,7 @@ function resolveModelId(
         modelName: modelId,
       },
       "canonical",
+      cachedApiModel.type,
     );
   }
 
@@ -179,6 +220,7 @@ function resolveModelId(
         modelName: modelId,
       },
       "canonical",
+      resolveApiModelType(apiCache, modelId, modelId),
     );
   }
 
@@ -212,10 +254,12 @@ function resolveFromConfigModel(
     apiBaseUrl?: string;
     apiKeyEnv?: string;
     modelName?: string;
+    apiModelType?: string;
     type?: "image" | "chat" | "completion";
     requestDefaults?: ResolvedModel["requestDefaults"];
   },
   submitMode: ResolvedModel["submitMode"] = inferSubmitMode(model.modelName ?? id),
+  apiModelType: string | undefined = model.apiModelType,
 ): ResolvedModel {
   const provider = model.provider;
 
@@ -254,6 +298,7 @@ function resolveFromConfigModel(
     apiKey,
     apiKeyEnv,
     modelName: model.modelName,
+    apiModelType,
     type,
     requestDefaults,
     isFromConfig: true,

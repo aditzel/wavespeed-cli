@@ -25,10 +25,10 @@ function makeConfig(partial: Partial<WavespeedConfig>): WavespeedConfig {
   };
 }
 
-function makeCacheProvider(...modelIds: string[]) {
+function makeCacheProvider(...models: Array<string | { model_id: string; type?: string }>) {
   return {
     async getCachedModels() {
-      return modelIds.map((model_id) => ({ model_id }));
+      return models.map((model) => (typeof model === "string" ? { model_id: model } : model));
     },
   };
 }
@@ -291,6 +291,29 @@ describe("config/models.resolveModel", () => {
       expect(ce.exitCode).toBe(3);
     }
   });
+
+  it("infers ai-remover routing for configured aliases that point at remover models", () => {
+    process.env.WAVESPEED_API_KEY = "test-key";
+
+    const resolved = resolveModel(
+      "edit",
+      "background-remover",
+      makeConfig({
+        models: {
+          "background-remover": {
+            provider: "wavespeed",
+            modelName: "wavespeed-ai/image-background-remover",
+          },
+        },
+      }),
+    );
+
+    expect(resolved.apiModelType).toBe("ai-remover");
+    expect(buildSubmitTarget(resolved, "edit")).toEqual({
+      model: "wavespeed-ai/image-background-remover",
+      path: "/api/v3/wavespeed-ai/image-background-remover",
+    });
+  });
 });
 
 describe("config/models.resolveModelForRequest", () => {
@@ -380,6 +403,33 @@ describe("config/models.resolveModelForRequest", () => {
     expect(resolved.submitMode).toBe("canonical");
   });
 
+  it("preserves cached ai-remover metadata for configured aliases", async () => {
+    process.env.WAVESPEED_API_KEY = "test-key";
+
+    const resolved = await resolveModelForRequest(
+      "edit",
+      "background-remover",
+      makeConfig({
+        models: {
+          "background-remover": {
+            provider: "wavespeed",
+            modelName: "wavespeed-ai/image-background-remover",
+          },
+        },
+      }),
+      makeCacheProvider({
+        model_id: "wavespeed-ai/image-background-remover",
+        type: "ai-remover",
+      }),
+    );
+
+    expect(resolved.apiModelType).toBe("ai-remover");
+    expect(buildSubmitTarget(resolved, "edit")).toEqual({
+      model: "wavespeed-ai/image-background-remover",
+      path: "/api/v3/wavespeed-ai/image-background-remover",
+    });
+  });
+
   it("accepts raw API model ids when cache is cold", async () => {
     process.env.WAVESPEED_API_KEY = "test-key";
 
@@ -393,6 +443,22 @@ describe("config/models.resolveModelForRequest", () => {
     expect(resolved.id).toBe("google/nano-banana-2/edit");
     expect(resolved.modelName).toBe("google/nano-banana-2/edit");
     expect(resolved.submitMode).toBe("canonical");
+  });
+
+  it("infers ai-remover metadata for raw API model ids when cache is cold", async () => {
+    process.env.WAVESPEED_API_KEY = "test-key";
+
+    const resolved = await resolveModelForRequest(
+      "edit",
+      "wavespeed-ai/image-background-remover",
+      undefined,
+      makeCacheProvider(),
+    );
+
+    expect(resolved.id).toBe("wavespeed-ai/image-background-remover");
+    expect(resolved.modelName).toBe("wavespeed-ai/image-background-remover");
+    expect(resolved.submitMode).toBe("canonical");
+    expect(resolved.apiModelType).toBe("ai-remover");
   });
 
   it("rejects unknown plain model ids when cache is cold", async () => {
