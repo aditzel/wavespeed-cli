@@ -430,6 +430,35 @@ describe("config/models.resolveModelForRequest", () => {
     });
   });
 
+  it("normalizes configured canonical remover refs to the base model path", async () => {
+    process.env.WAVESPEED_API_KEY = "test-key";
+
+    const resolved = await resolveModelForRequest(
+      "edit",
+      "background-remover",
+      makeConfig({
+        models: {
+          "background-remover": {
+            provider: "wavespeed",
+            modelName: "wavespeed-ai/image-background-remover/edit",
+          },
+        },
+      }),
+      makeCacheProvider({
+        model_id: "wavespeed-ai/image-background-remover",
+        type: "ai-remover",
+      }),
+    );
+
+    expect(resolved.modelName).toBe("wavespeed-ai/image-background-remover");
+    expect(resolved.submitMode).toBe("base");
+    expect(resolved.apiModelType).toBe("ai-remover");
+    expect(buildSubmitTarget(resolved, "edit")).toEqual({
+      model: "wavespeed-ai/image-background-remover",
+      path: "/api/v3/wavespeed-ai/image-background-remover",
+    });
+  });
+
   it("accepts raw API model ids when cache is cold", async () => {
     process.env.WAVESPEED_API_KEY = "test-key";
 
@@ -457,8 +486,30 @@ describe("config/models.resolveModelForRequest", () => {
 
     expect(resolved.id).toBe("wavespeed-ai/image-background-remover");
     expect(resolved.modelName).toBe("wavespeed-ai/image-background-remover");
-    expect(resolved.submitMode).toBe("canonical");
+    expect(resolved.submitMode).toBe("base");
     expect(resolved.apiModelType).toBe("ai-remover");
+  });
+
+  it("uses cached base-model typing for canonical remover raw ids", async () => {
+    process.env.WAVESPEED_API_KEY = "test-key";
+
+    const resolved = await resolveModelForRequest(
+      "edit",
+      "acme/remove-bg/edit",
+      undefined,
+      makeCacheProvider({
+        model_id: "acme/remove-bg",
+        type: "ai-remover",
+      }),
+    );
+
+    expect(resolved.modelName).toBe("acme/remove-bg");
+    expect(resolved.submitMode).toBe("base");
+    expect(resolved.apiModelType).toBe("ai-remover");
+    expect(buildSubmitTarget(resolved, "edit")).toEqual({
+      model: "acme/remove-bg",
+      path: "/api/v3/acme/remove-bg",
+    });
   });
 
   it("rejects unknown plain model ids when cache is cold", async () => {

@@ -23,9 +23,11 @@ export function inferApiModelType(modelRef?: string): string | undefined {
 }
 
 export function isAiRemoverModel(model: ResolvedModel): boolean {
-  return (
-    model.apiModelType === "ai-remover" || inferApiModelType(getModelRef(model)) === "ai-remover"
-  );
+  if (model.apiModelType) {
+    return model.apiModelType === "ai-remover";
+  }
+
+  return inferApiModelType(getModelRef(model)) === "ai-remover";
 }
 
 function supportsPromptDrivenAiRemoval(model: ResolvedModel): boolean {

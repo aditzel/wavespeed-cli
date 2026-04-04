@@ -56,18 +56,46 @@ function toApiModelCache(
   return models.length > 0 ? { models } : undefined;
 }
 
+function stripCanonicalModelSuffix(modelRef?: string): string | undefined {
+  if (!modelRef) {
+    return undefined;
+  }
+
+  for (const suffix of CANONICAL_MODEL_SUFFIXES) {
+    if (modelRef.endsWith(suffix)) {
+      return modelRef.slice(0, -suffix.length);
+    }
+  }
+
+  return modelRef;
+}
+
+function normalizeModelRefForType(
+  modelRef: string | undefined,
+  apiModelType?: string,
+): string | undefined {
+  return apiModelType === "ai-remover" ? stripCanonicalModelSuffix(modelRef) : modelRef;
+}
+
 function findCachedModelType(
   apiCache: ApiModelCache | undefined,
   ...refs: Array<string | undefined>
 ): string | undefined {
   for (const ref of refs) {
-    if (!ref) {
+    const candidates = [ref, stripCanonicalModelSuffix(ref)].filter(
+      (candidate, index, values): candidate is string =>
+        Boolean(candidate) && values.indexOf(candidate) === index,
+    );
+
+    if (candidates.length === 0) {
       continue;
     }
 
-    const match = apiCache?.models.find((model) => model.model_id === ref);
-    if (match?.type) {
-      return match.type;
+    for (const candidate of candidates) {
+      const match = apiCache?.models.find((model) => model.model_id === candidate);
+      if (match?.type) {
+        return match.type;
+      }
     }
   }
 
@@ -83,7 +111,8 @@ function resolveApiModelType(
   return (
     configuredType ??
     findCachedModelType(apiCache, modelName, id) ??
-    inferApiModelType(modelName ?? id)
+    inferApiModelType(modelName ?? id) ??
+    inferApiModelType(stripCanonicalModelSuffix(modelName ?? id))
   );
 }
 
@@ -176,51 +205,73 @@ function resolveModelId(
 ): ResolvedModel {
   const modelConfig = config?.models?.[modelId];
   if (modelConfig) {
+    const apiModelType = resolveApiModelType(
+      apiCache,
+      modelId,
+      modelConfig.modelName,
+      modelConfig.apiModelType,
+    );
+    const normalizedModelRef = normalizeModelRefForType(
+      modelConfig.modelName ?? modelId,
+      apiModelType,
+    );
+
     return resolveFromConfigModel(
       modelId,
-      modelConfig,
-      inferSubmitMode(modelConfig.modelName ?? modelId),
-      resolveApiModelType(apiCache, modelId, modelConfig.modelName, modelConfig.apiModelType),
+      {
+        ...modelConfig,
+        modelName: apiModelType === "ai-remover" ? normalizedModelRef : modelConfig.modelName,
+      },
+      inferSubmitMode(normalizedModelRef),
+      apiModelType,
     );
   }
 
   const registryModel = getRegistryModel(modelId);
   if (registryModel) {
+    const apiModelType = resolveApiModelType(apiCache, modelId, registryModel.modelName);
+    const normalizedModelRef = normalizeModelRefForType(registryModel.modelName, apiModelType);
+
     return resolveFromConfigModel(
       modelId,
       {
         provider: registryModel.provider,
         apiBaseUrl: registryModel.apiBaseUrl,
-        modelName: registryModel.modelName,
+        modelName: normalizedModelRef,
         apiKeyEnv: "WAVESPEED_API_KEY",
       },
-      "base",
-      resolveApiModelType(apiCache, modelId, registryModel.modelName),
+      inferSubmitMode(normalizedModelRef),
+      apiModelType,
     );
   }
 
   const cachedApiModel = apiCache?.models.find((model) => model.model_id === modelId);
   if (cachedApiModel) {
+    const normalizedModelRef = normalizeModelRefForType(modelId, cachedApiModel.type);
+
     return resolveFromConfigModel(
       modelId,
       {
         provider: "wavespeed",
-        modelName: modelId,
+        modelName: normalizedModelRef,
       },
-      "canonical",
+      inferSubmitMode(normalizedModelRef),
       cachedApiModel.type,
     );
   }
 
   if (modelId.includes("/")) {
+    const apiModelType = resolveApiModelType(apiCache, modelId, modelId);
+    const normalizedModelRef = normalizeModelRefForType(modelId, apiModelType);
+
     return resolveFromConfigModel(
       modelId,
       {
         provider: "wavespeed",
-        modelName: modelId,
+        modelName: normalizedModelRef,
       },
-      "canonical",
-      resolveApiModelType(apiCache, modelId, modelId),
+      inferSubmitMode(normalizedModelRef),
+      apiModelType,
     );
   }
 
