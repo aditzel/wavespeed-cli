@@ -13,6 +13,7 @@ export interface ModelConfig {
   apiBaseUrl?: string;
   apiKeyEnv?: string;
   modelName?: string;
+  apiModelType?: string;
   type?: "image" | "chat" | "completion";
   requestDefaults?: RequestDefaults;
 }
@@ -41,6 +42,7 @@ export interface ResolvedModel {
   apiKey: string;
   apiKeyEnv: string;
   modelName?: string;
+  apiModelType?: string;
   type: "image" | "chat" | "completion";
   requestDefaults: RequestDefaults;
   isFromConfig: boolean;

@@ -1,4 +1,5 @@
 import { submitTask } from "../api/client";
+import { buildEditPayload } from "../utils/model-routing.ts";
 import { pollUntilDone } from "../utils/polling";
 import type {
   EditParams,
@@ -71,26 +72,12 @@ export async function generateImage(params: GenerateParams): Promise<OperationRe
  * Core edit operation - image to image
  */
 export async function editImage(params: EditParams): Promise<OperationResult> {
-  const {
-    prompt,
-    images,
-    size = "2048*2048",
-    base64Output = false,
-    syncMode = true,
-    model,
-  } = params;
-
-  const payload: Record<string, unknown> = {
-    prompt,
-    images,
-    size,
-    enable_base64_output: base64Output,
-    enable_sync_mode: syncMode,
-  };
+  const { images, model } = params;
 
   try {
+    const payload = buildEditPayload(params);
     console.error(
-      `[DEBUG] editImage: Submitting task with model=${model.id}, size=${size}, images=${images.length}, syncMode=${syncMode}`,
+      `[DEBUG] editImage: Submitting task with model=${model.id}, images=${images.length}, aiRemover=${"image" in payload}, payloadKeys=${Object.keys(payload).join(",")}`,
     );
     const created = await submitTask(model, "edit", payload);
     console.error(`[DEBUG] editImage: Task submitted, id=${created.id}, status=${created.status}`);

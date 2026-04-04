@@ -41,6 +41,34 @@ const configuredCanonicalAlias: ResolvedModel = {
   submitMode: "canonical",
 };
 
+const aiRemoverAliasModel: ResolvedModel = {
+  id: "background-remover",
+  provider: "wavespeed",
+  apiBaseUrl: "https://api.wavespeed.ai",
+  apiKeyEnv: "WAVESPEED_API_KEY",
+  apiKey: "test-api-key",
+  modelName: "wavespeed-ai/image-background-remover",
+  apiModelType: "ai-remover",
+  type: "image",
+  requestDefaults: {},
+  isFromConfig: true,
+  submitMode: "base",
+};
+
+const explicitNonRemoverModel: ResolvedModel = {
+  id: "background-remover-edit",
+  provider: "wavespeed",
+  apiBaseUrl: "https://api.wavespeed.ai",
+  apiKeyEnv: "WAVESPEED_API_KEY",
+  apiKey: "test-api-key",
+  modelName: "vendor/background-remover",
+  apiModelType: "image-to-image",
+  type: "image",
+  requestDefaults: {},
+  isFromConfig: true,
+  submitMode: "base",
+};
+
 describe("API Client", () => {
   const originalEnv = process.env.WAVESPEED_API_KEY;
   const originalFetch = globalThis.fetch;
@@ -272,6 +300,20 @@ describe("API Client", () => {
       expect(buildSubmitTarget(configuredCanonicalAlias, "edit")).toEqual({
         model: "google/nano-banana-2/edit",
         path: "/api/v3/google/nano-banana-2/edit",
+      });
+    });
+
+    it("routes ai-remover aliases through the base model path", () => {
+      expect(buildSubmitTarget(aiRemoverAliasModel, "edit")).toEqual({
+        model: "wavespeed-ai/image-background-remover",
+        path: "/api/v3/wavespeed-ai/image-background-remover",
+      });
+    });
+
+    it("honors explicit non-remover model types before heuristic matches", () => {
+      expect(buildSubmitTarget(explicitNonRemoverModel, "edit")).toEqual({
+        model: "vendor/background-remover/edit",
+        path: "/api/v3/vendor/background-remover/edit",
       });
     });
   });

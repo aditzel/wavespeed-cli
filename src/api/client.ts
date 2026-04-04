@@ -1,5 +1,6 @@
 import type { ResolvedModel } from "../config/types";
 import type { CommandType } from "../core/types";
+import { isAiRemoverModel } from "../utils/model-routing.ts";
 import { type ApiEnvelope, endpoints, type TaskData } from "./types.ts";
 
 async function httpJson(
@@ -121,7 +122,7 @@ export function buildSubmitTarget(
   const modelRef = model.modelName ?? model.id;
 
   const suffix =
-    model.submitMode === "canonical"
+    model.submitMode === "canonical" || (command === "edit" && isAiRemoverModel(model))
       ? ""
       : {
           generate: "",
