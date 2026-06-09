@@ -1,4 +1,10 @@
-import { convertFileToBase64, fileExists, isUrl } from "./images.ts";
+import { convertFileToDataUri, decodeBase64Image, isDataUriImage, isUrl } from "./images.ts";
+
+export interface ParseImagesListOptions {
+  allowLocalFiles?: boolean;
+  localFileRoot?: string;
+  maxFileBytes?: number;
+}
 
 /**
  * Validate that a prompt-like input contains non-empty text.
@@ -32,21 +38,64 @@ export function parseSize(input: unknown, defaultSize = "2048*2048"): string {
   return `${w}*${h}`;
 }
 
+function normalizeImageItems(arg: unknown): string[] {
+  if (Array.isArray(arg)) {
+    return arg.map((item) => String(item ?? "").trim()).filter(Boolean);
+  }
+
+  const s = String(arg ?? "").trim();
+  if (!s) return [];
+
+  if (s.includes("data:image/")) {
+    const dataUriPattern = /data:image\/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=_-]+/gi;
+    const items: string[] = [];
+    let lastIndex = 0;
+
+    for (const match of s.matchAll(dataUriPattern)) {
+      const index = match.index ?? 0;
+      items.push(
+        ...s
+          .slice(lastIndex, index)
+          .split(",")
+          .map((x) => x.trim())
+          .filter(Boolean),
+      );
+      items.push(match[0]);
+      lastIndex = index + match[0].length;
+    }
+
+    items.push(
+      ...s
+        .slice(lastIndex)
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean),
+    );
+
+    if (items.some((item) => isDataUriImage(item))) {
+      return items;
+    }
+  }
+
+  return s
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
 /**
- * Parse a comma-separated image list into URLs or base64-encoded file payloads.
+ * Parse and validate a comma-separated image list into URLs, data URIs, or
+ * base64-encoded local image payloads.
  */
 export async function parseImagesList(
   arg: unknown,
   required: boolean,
   max = 10,
+  options: ParseImagesListOptions = {},
 ): Promise<string[]> {
-  const s = String(arg ?? "").trim();
-  if (!s && required) throw new Error("Images are required");
-  if (!s) return [];
-  const items = s
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean);
+  const items = normalizeImageItems(arg);
+  if (!items.length && required) throw new Error("Images are required");
+  if (!items.length) return [];
   if (items.length > max) {
     throw new Error(`At most ${max} images are allowed`);
   }
@@ -55,21 +104,43 @@ export async function parseImagesList(
 
   for (const item of items) {
     if (isUrl(item)) {
-      // Validate URL
-      try {
-        new URL(item);
-        processedItems.push(item);
-      } catch {
-        throw new Error(`Invalid image URL: ${item}`);
-      }
-    } else {
-      // Treat as file path
-      if (!(await fileExists(item))) {
+      const url = new URL(item);
+      processedItems.push(url.toString());
+      continue;
+    }
+
+    if (isDataUriImage(item)) {
+      decodeBase64Image(item, options.maxFileBytes);
+      processedItems.push(item);
+      continue;
+    }
+
+    try {
+      decodeBase64Image(item, options.maxFileBytes);
+      processedItems.push(item);
+      continue;
+    } catch {
+      // Not raw image base64; fall through to optional local file handling.
+    }
+
+    if (options.allowLocalFiles === false) {
+      throw new Error(
+        "Local image file paths are disabled in this context. Use image URLs or data URI/base64 image data.",
+      );
+    }
+
+    try {
+      const dataUri = await convertFileToDataUri(item, {
+        rootDir: options.localFileRoot,
+        maxBytes: options.maxFileBytes,
+      });
+      processedItems.push(dataUri);
+    } catch (err) {
+      const message = (err as Error).message;
+      if (message.includes("ENOENT") || message.includes("no such file")) {
         throw new Error(`Image file not found: ${item}`);
       }
-      // Convert to base64 with data URI
-      const base64 = await convertFileToBase64(item);
-      processedItems.push(`data:image/jpeg;base64,${base64}`);
+      throw err;
     }
   }
 

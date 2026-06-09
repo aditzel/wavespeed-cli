@@ -292,6 +292,89 @@ describe("config/models.resolveModel", () => {
     }
   });
 
+  it("blocks sending WAVESPEED_API_KEY to custom non-Wavespeed hosts by default", () => {
+    process.env.WAVESPEED_API_KEY = "secret";
+
+    const config = makeConfig({
+      models: {
+        gateway: {
+          provider: "wavespeed",
+          apiKeyEnv: "WAVESPEED_API_KEY",
+          apiBaseUrl: "https://example.com",
+          modelName: "vendor/model",
+        },
+      },
+      defaults: {
+        globalModel: "gateway",
+      },
+    });
+
+    expect(() => resolveModel("generate", undefined, config)).toThrow(ConfigError);
+  });
+
+  it("allows trusted custom API base URLs when explicitly opted in", () => {
+    process.env.WAVESPEED_API_KEY = "secret";
+    process.env.WAVESPEED_ALLOW_CUSTOM_API_BASE_URL = "1";
+
+    const model = resolveModel(
+      "generate",
+      undefined,
+      makeConfig({
+        models: {
+          gateway: {
+            provider: "wavespeed",
+            apiKeyEnv: "WAVESPEED_API_KEY",
+            apiBaseUrl: "https://example.com/",
+            modelName: "vendor/model",
+          },
+        },
+        defaults: {
+          globalModel: "gateway",
+        },
+      }),
+    );
+
+    expect(model.apiBaseUrl).toBe("https://example.com");
+  });
+
+  it("blocks insecure localhost API base URLs by default", () => {
+    process.env.C_KEY = "secret";
+
+    const config = makeConfig({
+      models: {
+        local: {
+          provider: "custom",
+          apiKeyEnv: "C_KEY",
+          apiBaseUrl: "http://127.0.0.1:3000",
+        },
+      },
+      defaults: {
+        globalModel: "local",
+      },
+    });
+
+    expect(() => resolveModel("generate", undefined, config)).toThrow(ConfigError);
+  });
+
+  it("blocks IPv4-mapped IPv6 private API base URLs by default", () => {
+    process.env.C_KEY = "secret";
+
+    const config = makeConfig({
+      models: {
+        local: {
+          provider: "custom",
+          apiKeyEnv: "C_KEY",
+          apiBaseUrl: "https://[::ffff:127.0.0.1]",
+        },
+      },
+      defaults: {
+        globalModel: "local",
+      },
+    });
+
+    expect(() => resolveModel("generate", undefined, config)).toThrow(ConfigError);
+  });
+
   it("infers ai-remover routing for configured aliases that point at remover models", () => {
     process.env.WAVESPEED_API_KEY = "test-key";
 

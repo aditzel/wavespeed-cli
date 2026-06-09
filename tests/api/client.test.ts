@@ -316,11 +316,21 @@ describe("API Client", () => {
         path: "/api/v3/vendor/background-remover/edit",
       });
     });
+
+    it("rejects unsafe model path segments", () => {
+      expect(() =>
+        buildSubmitTarget({ ...testModel, modelName: "vendor/../secret" }, "generate"),
+      ).toThrow("Invalid model id segment");
+      expect(() =>
+        buildSubmitTarget({ ...testModel, modelName: "vendor/model?x=1" }, "generate"),
+      ).toThrow("Invalid model id segment");
+    });
   });
 
   describe("Static endpoints", () => {
     it("should keep the non-submit endpoint URLs", () => {
       expect(endpoints.result("test-123")).toBe("/api/v3/predictions/test-123/result");
+      expect(() => endpoints.result("../secret")).toThrow("Invalid prediction request id");
       expect(endpoints.models).toBe("/api/v3/models");
     });
   });

@@ -1,7 +1,37 @@
 import type { ResolvedModel } from "../config/types";
 import type { CommandType } from "../core/types";
+import { debugLog, redactUrl, truncateForLog } from "../utils/logging.ts";
 import { isAiRemoverModel } from "../utils/model-routing.ts";
 import { type ApiEnvelope, endpoints, type TaskData } from "./types.ts";
+
+const MODEL_SEGMENT_PATTERN = /^[A-Za-z0-9._-]+$/;
+
+function joinApiUrl(baseUrl: string, apiPath: string): string {
+  const trimmedBase = baseUrl.replace(/\/+$/, "");
+  const normalizedPath = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
+  return `${trimmedBase}${normalizedPath}`;
+}
+
+function encodeModelPath(modelRef: string): string {
+  const segments = modelRef.split("/");
+  if (!segments.length) {
+    throw new Error("Model id is required");
+  }
+
+  for (const segment of segments) {
+    if (
+      !segment ||
+      segment === "." ||
+      segment === ".." ||
+      /%2f|%5c/i.test(segment) ||
+      !MODEL_SEGMENT_PATTERN.test(segment)
+    ) {
+      throw new Error(`Invalid model id segment '${segment}'`);
+    }
+  }
+
+  return segments.map((segment) => encodeURIComponent(segment)).join("/");
+}
 
 async function httpJson(
   method: string,
@@ -9,8 +39,9 @@ async function httpJson(
   url: string,
   body?: unknown,
 ): Promise<unknown> {
-  const fullUrl = `${model.apiBaseUrl}${url}`;
-  console.error(`[DEBUG] HTTP ${method} ${fullUrl} (model=${model.id})`);
+  const fullUrl = joinApiUrl(model.apiBaseUrl, url);
+  const safeUrl = redactUrl(fullUrl);
+  debugLog(`[DEBUG] HTTP ${method} ${safeUrl} (model=${model.id})`);
 
   const res = await fetch(fullUrl, {
     method,
@@ -23,20 +54,21 @@ async function httpJson(
   });
 
   const text = await res.text();
-  console.error(`[DEBUG] HTTP ${method} ${fullUrl} -> ${res.status} ${res.statusText}`);
+  debugLog(`[DEBUG] HTTP ${method} ${safeUrl} -> ${res.status} ${res.statusText}`);
 
   let json: unknown;
   try {
     json = text ? JSON.parse(text) : {};
   } catch {
-    console.error(`[DEBUG] Failed to parse JSON response: ${text.substring(0, 200)}`);
+    debugLog(`[DEBUG] Failed to parse JSON response: ${truncateForLog(text, 200)}`);
     throw new Error(`Non JSON response with status ${res.status}`);
   }
 
   if (!res.ok) {
     const errorBody = json as Record<string, unknown> | undefined;
-    const msg = errorBody?.error || errorBody?.message || res.statusText;
-    console.error(`[DEBUG] HTTP error ${res.status}: ${msg}`);
+    const rawMsg = errorBody?.error || errorBody?.message || res.statusText;
+    const msg = truncateForLog(rawMsg, 500);
+    debugLog(`[DEBUG] HTTP error ${res.status}: ${msg}`);
     throw new Error(`HTTP ${res.status}: ${msg}`);
   }
 
@@ -79,7 +111,7 @@ export async function getModels(apiKey: string): Promise<unknown[]> {
   // We use the default Wavespeed API base URL
   const url = `https://api.wavespeed.ai${endpoints.models}`;
 
-  console.error(`[DEBUG] Fetching models from ${url}`);
+  debugLog(`[DEBUG] Fetching models from ${url}`);
 
   try {
     const res = await fetch(url, {
@@ -90,24 +122,25 @@ export async function getModels(apiKey: string): Promise<unknown[]> {
       },
     });
 
-    console.error(`[DEBUG] GET ${url} -> ${res.status} ${res.statusText}`);
+    debugLog(`[DEBUG] GET ${url} -> ${res.status} ${res.statusText}`);
 
     if (!res.ok) {
       const text = await res.text();
-      console.error(`[DEBUG] Failed to fetch models: HTTP ${res.status}: ${text}`);
-      throw new Error(`HTTP ${res.status}: ${text}`);
+      const msg = truncateForLog(text, 500);
+      debugLog(`[DEBUG] Failed to fetch models: HTTP ${res.status}: ${msg}`);
+      throw new Error(`HTTP ${res.status}: ${msg}`);
     }
 
     const json = await res.json();
     // The API returns { code: 200, data: [...] }
     if (json && Array.isArray(json.data)) {
-      console.error(`[DEBUG] Successfully fetched ${json.data.length} models`);
+      debugLog(`[DEBUG] Successfully fetched ${json.data.length} models`);
       return json.data;
     }
-    console.error(`[DEBUG] Unexpected response format, returning empty array`);
+    debugLog(`[DEBUG] Unexpected response format, returning empty array`);
     return [];
   } catch (err) {
-    console.error(`[DEBUG] Exception fetching models: ${(err as Error).message}`);
+    debugLog(`[DEBUG] Exception fetching models: ${(err as Error).message}`);
     throw new Error(`Failed to fetch models: ${(err as Error).message}`);
   }
 }
@@ -135,7 +168,7 @@ export function buildSubmitTarget(
 
   return {
     model: canonicalModel,
-    path: `/api/v3/${canonicalModel}`,
+    path: `/api/v3/${encodeModelPath(canonicalModel)}`,
   };
 }
 

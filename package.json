@@ -1,14 +1,15 @@
 {
   "name": "wavespeed-cli",
   "version": "1.3.2",
-  "description": "CLI for Wavespeed AI Bytedance Seedream V4 API",
+  "description": "MCP server and CLI for Wavespeed AI image generation and editing",
   "type": "module",
   "bin": {
     "wavespeed": "dist/index.js"
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "skills"
   ],
   "repository": {
     "type": "git",
@@ -19,7 +20,8 @@
     "url": "https://github.com/aditzel/wavespeed-cli/issues"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "provenance": true
   },
   "keywords": [
     "wavespeed",
@@ -27,7 +29,7 @@
     "image-generation",
     "video-generation",
     "cli",
-    "seedream"
+    "mcp"
   ],
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --target bun --format esm && chmod +x dist/index.js",
@@ -37,7 +39,8 @@
     "test:watch": "bun test --watch",
     "lint": "biome check src tests",
     "lint:fix": "biome check --write src tests",
-    "format": "biome format src tests"
+    "format": "biome format src tests",
+    "release": "semantic-release"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.28.0",

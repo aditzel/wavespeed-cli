@@ -10,6 +10,7 @@ export function registerMCP(program: Command) {
     .description("Start the Wavespeed MCP server (stdio-based)")
     .action(async () => {
       try {
+        process.env.WAVESPEED_MCP_MODE = "1";
         const server = new WavespeedMCPServer();
         await server.start();
       } catch (err) {

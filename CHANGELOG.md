@@ -10,7 +10,7 @@ All notable changes to wavespeed-cli will be documented in this file.
 ### Bug Fixes
 
 * unify CLI and MCP model resolution and submit routing
-* derive submit URLs from the selected model instead of fixed Seedream V4 endpoints
+* derive submit URLs from the selected model instead of fixed legacy default-model endpoints
 * harden config model resolution for canonical ids and cache fallback behavior
 * make live MCP E2E opt-in and stabilize home-config test isolation
 

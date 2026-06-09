@@ -11,6 +11,7 @@ import {
 describe("Validation Utils", () => {
   const testDir = path.join(import.meta.dir, "../fixtures");
   const testImagePath = path.join(testDir, "test-validation.png");
+  let testImageDataUri = "";
 
   beforeAll(async () => {
     await mkdir(testDir, { recursive: true });
@@ -23,6 +24,7 @@ describe("Validation Utils", () => {
       0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
     ]);
     await writeFile(testImagePath, pngData);
+    testImageDataUri = `data:image/png;base64,${Buffer.from(pngData).toString("base64")}`;
   });
 
   afterAll(async () => {
@@ -95,7 +97,7 @@ describe("Validation Utils", () => {
     it("should handle local file paths", async () => {
       const result = await parseImagesList(testImagePath, true, 10);
       expect(result).toHaveLength(1);
-      expect(result[0]).toStartWith("data:image/jpeg;base64,");
+      expect(result[0]).toStartWith("data:image/png;base64,");
     });
 
     it("should handle mixed URLs and files", async () => {
@@ -103,7 +105,7 @@ describe("Validation Utils", () => {
       const result = await parseImagesList(mixed, true, 10);
       expect(result).toHaveLength(2);
       expect(result[0]).toBe("https://example.com/image.jpg");
-      expect(result[1]).toStartWith("data:image/jpeg;base64,");
+      expect(result[1]).toStartWith("data:image/png;base64,");
     });
 
     it("should return empty array when not required and no input", async () => {
@@ -119,6 +121,25 @@ describe("Validation Utils", () => {
       await expect(parseImagesList("nonexistent.jpg", true, 10)).rejects.toThrow(
         "Image file not found",
       );
+    });
+
+    it("should accept image data URIs", async () => {
+      const dataUri = await parseImagesList(testImageDataUri, true, 10);
+      expect(dataUri).toHaveLength(1);
+      expect(dataUri[0]).toStartWith("data:image/png;base64,");
+    });
+
+    it("should parse multiple comma-separated image data URIs", async () => {
+      const dataUris = await parseImagesList(`${testImageDataUri},${testImageDataUri}`, true, 10);
+      expect(dataUris).toHaveLength(2);
+      expect(dataUris[0]).toStartWith("data:image/png;base64,");
+      expect(dataUris[1]).toStartWith("data:image/png;base64,");
+    });
+
+    it("should disable local files when requested", async () => {
+      await expect(
+        parseImagesList(testImagePath, true, 10, { allowLocalFiles: false }),
+      ).rejects.toThrow("Local image file paths are disabled");
     });
 
     it("should throw when invalid URL provided", async () => {

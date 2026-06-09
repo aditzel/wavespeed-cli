@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
 import path from "node:path";
 import {
   convertFileToBase64,
@@ -114,31 +115,46 @@ describe("Image Utils", () => {
   });
 
   describe("saveImagesFromOutputs", () => {
-    // Mock fetch for URL testing
-    const originalFetch = globalThis.fetch;
+    let server: Server;
+    let serverUrl = "";
 
-    beforeAll(() => {
-      globalThis.fetch = async (url: string | URL) => {
-        if (url.toString().includes("example.com")) {
+    beforeAll(async () => {
+      server = createServer(async (req, res) => {
+        if (req.url?.includes("valid") || req.url?.includes("image")) {
           const pngData = await readFile(testImagePath);
-          return new Response(pngData, {
-            status: 200,
-            headers: { "content-type": "image/png" },
-          });
+          res.writeHead(200, { "content-type": "image/png" });
+          res.end(pngData);
+          return;
         }
-        return new Response("Not found", { status: 404 });
-      };
+
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "not found" }));
+      });
+
+      await new Promise<void>((resolve) => {
+        server.listen(0, "127.0.0.1", () => resolve());
+      });
+
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Failed to determine test server address");
+      }
+      serverUrl = `http://127.0.0.1:${address.port}`;
     });
 
-    afterAll(() => {
-      globalThis.fetch = originalFetch;
+    afterAll(async () => {
+      await new Promise<void>((resolve, reject) => {
+        server.close((err) => (err ? reject(err) : resolve()));
+      });
     });
 
     it("should save images from URLs", async () => {
-      const outputs = ["https://example.com/image1.png", "https://example.com/image2.png"];
+      const outputs = [`${serverUrl}/image1.png`, `${serverUrl}/image2.png`];
       const taskId = "test-task-123";
 
-      const result = await saveImagesFromOutputs(outputs, outputDir, taskId);
+      const result = await saveImagesFromOutputs(outputs, outputDir, taskId, {
+        allowPrivateNetwork: true,
+      });
 
       expect(result.savedPaths).toHaveLength(2);
       expect(result.failed).toHaveLength(0);
@@ -166,18 +182,59 @@ describe("Image Utils", () => {
 
     it("should handle mixed success and failure", async () => {
       const base64 = await convertFileToBase64(testImagePath);
-      const outputs = [
-        "https://example.com/valid.png",
-        "https://invalid-domain.test/fail.png",
-        base64,
-      ];
+      const outputs = [`${serverUrl}/valid.png`, `${serverUrl}/missing.png`, base64];
       const taskId = "test-mixed-789";
 
-      const result = await saveImagesFromOutputs(outputs, outputDir, taskId);
+      const result = await saveImagesFromOutputs(outputs, outputDir, taskId, {
+        allowPrivateNetwork: true,
+      });
 
       expect(result.savedPaths).toHaveLength(2); // URL + base64 success
+      expect(result.savedByIndex[0]).toBeDefined();
+      expect(result.savedByIndex[1]).toBeUndefined();
+      expect(result.savedByIndex[2]).toBeDefined();
       expect(result.failed).toHaveLength(1); // Invalid URL failure
       expect(result.failed[0].index).toBe(1);
+    });
+
+    it("should sanitize task ids before building output paths", async () => {
+      const base64 = await convertFileToBase64(testImagePath);
+      const result = await saveImagesFromOutputs([base64], outputDir, "../evil/task");
+
+      expect(result.savedPaths).toHaveLength(1);
+      expect(path.dirname(result.savedPaths[0])).toBe(path.resolve(outputDir));
+      expect(path.basename(result.savedPaths[0])).not.toContain("..");
+    });
+
+    it("should reject output directories outside a configured root", async () => {
+      const base64 = await convertFileToBase64(testImagePath);
+      await expect(
+        saveImagesFromOutputs([base64], "../outside", "task", { outputRoot: outputDir }),
+      ).rejects.toThrow("Output directory must stay within configured output root");
+    });
+
+    it("should reject private network download URLs", async () => {
+      const result = await saveImagesFromOutputs(
+        ["http://127.0.0.1/private.png"],
+        outputDir,
+        "private-url",
+      );
+
+      expect(result.savedPaths).toHaveLength(0);
+      expect(result.failed).toHaveLength(1);
+      expect(result.failed[0].reason).toContain("localhost/private network");
+    });
+
+    it("should reject IPv4-mapped IPv6 private download URLs", async () => {
+      const result = await saveImagesFromOutputs(
+        ["http://[::ffff:127.0.0.1]/private.png"],
+        outputDir,
+        "private-ipv6-url",
+      );
+
+      expect(result.savedPaths).toHaveLength(0);
+      expect(result.failed).toHaveLength(1);
+      expect(result.failed[0].reason).toContain("localhost/private network");
     });
   });
 });

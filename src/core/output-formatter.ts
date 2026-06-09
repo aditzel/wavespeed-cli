@@ -1,4 +1,4 @@
-import { saveImagesFromOutputs } from "../utils/images";
+import { type SaveImagesOptions, saveImagesFromOutputs } from "../utils/images";
 import type { ImageOutput, MCPError, MCPToolResponse, OperationResult, OutputMode } from "./types";
 
 /**
@@ -71,6 +71,7 @@ export async function formatForMCP(
   result: OperationResult,
   outputMode: OutputMode,
   outputDir: string,
+  saveOptions: SaveImagesOptions = {},
 ): Promise<MCPToolResponse> {
   // Handle errors
   if (!result.success) {
@@ -99,13 +100,18 @@ export async function formatForMCP(
 
     case "paths": {
       // URLs + saved file paths
-      const { savedPaths } = await saveImagesFromOutputs(result.outputs, outputDir, result.taskId);
+      const { savedByIndex } = await saveImagesFromOutputs(
+        result.outputs,
+        outputDir,
+        result.taskId,
+        saveOptions,
+      );
 
       for (let i = 0; i < result.outputs.length; i++) {
         images.push({
           index: i,
           url: result.outputs[i],
-          path: savedPaths[i] || undefined,
+          path: savedByIndex[i],
         });
       }
       break;
