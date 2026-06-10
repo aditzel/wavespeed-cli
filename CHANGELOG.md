@@ -2,6 +2,15 @@
 
 All notable changes to wavespeed-cli will be documented in this file.
 
+## [1.3.3](https://github.com/aditzel/wavespeed-cli/compare/v1.3.2...v1.3.3) (2026-06-10)
+
+
+### Bug Fixes
+
+* address PR review feedback ([9e5bcea](https://github.com/aditzel/wavespeed-cli/commit/9e5bceac41463bf1cc0039c8b1422a9f822fd69f))
+* harden MCP and supply chain security ([5696cc1](https://github.com/aditzel/wavespeed-cli/commit/5696cc1928e2080f29a17301ca0d4ca2fa66e4ef))
+* tighten image root confinement ([2f5580c](https://github.com/aditzel/wavespeed-cli/commit/2f5580cbe9a6d3e1f94e55b746271cd21b4b88be))
+
 ## [1.3.2](https://github.com/aditzel/wavespeed-cli/compare/v1.3.1...v1.3.2) (2026-04-04)
 
 ## [1.3.1](https://github.com/aditzel/wavespeed-cli/compare/v1.3.0...v1.3.1) (2026-03-27)

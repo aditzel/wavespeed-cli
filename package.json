@@ -1,6 +1,6 @@
 {
   "name": "wavespeed-cli",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "MCP server and CLI for Wavespeed AI image generation and editing",
   "type": "module",
   "bin": {
