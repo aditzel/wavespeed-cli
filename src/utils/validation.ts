@@ -46,7 +46,7 @@ function normalizeImageItems(arg: unknown): string[] {
   const s = String(arg ?? "").trim();
   if (!s) return [];
 
-  if (s.includes("data:image/")) {
+  if (/data:image\//i.test(s)) {
     const dataUriPattern = /data:image\/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=_-]+/gi;
     const items: string[] = [];
     let lastIndex = 0;

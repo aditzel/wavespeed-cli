@@ -1,3 +1,4 @@
+import { lookup } from "node:dns/promises";
 import net from "node:net";
 import { ModelCache } from "../cache";
 import { inferApiModelType } from "../utils/model-routing.ts";
@@ -44,8 +45,15 @@ function envFlag(name: string): boolean {
   return /^(1|true|yes|on)$/i.test(process.env[name] ?? "");
 }
 
+function normalizeHostnameForPolicy(hostname: string): string {
+  return hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.+$/g, "");
+}
+
 function isKnownWavespeedHost(hostname: string): boolean {
-  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  const normalized = normalizeHostnameForPolicy(hostname);
   return normalized === "wavespeed.ai" || normalized.endsWith(WAVESPEED_HOST_SUFFIX);
 }
 
@@ -124,7 +132,7 @@ function isPrivateIPv6(address: string): boolean {
 }
 
 function isLocalOrPrivateHost(hostname: string): boolean {
-  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  const normalized = normalizeHostnameForPolicy(hostname);
   if (normalized === "localhost" || normalized.endsWith(".localhost")) {
     return true;
   }
@@ -133,6 +141,49 @@ function isLocalOrPrivateHost(hostname: string): boolean {
   if (family === 4) return isPrivateIPv4(normalized);
   if (family === 6) return isPrivateIPv6(normalized);
   return false;
+}
+
+async function resolvedHostIsLocalOrPrivate(hostname: string): Promise<boolean> {
+  const normalized = normalizeHostnameForPolicy(hostname);
+  if (isLocalOrPrivateHost(normalized)) {
+    return true;
+  }
+
+  const addresses = await lookup(normalized, { all: true, verbatim: true });
+  return addresses.some((entry) => {
+    const family = net.isIP(entry.address);
+    if (family === 4) return isPrivateIPv4(entry.address);
+    if (family === 6) return isPrivateIPv6(entry.address);
+    return true;
+  });
+}
+
+async function validateResolvedApiBaseUrlHost(modelId: string, apiBaseUrl: string): Promise<void> {
+  if (envFlag("WAVESPEED_ALLOW_INSECURE_API_BASE_URL")) {
+    return;
+  }
+
+  const parsed = new URL(apiBaseUrl);
+  if (isKnownWavespeedHost(parsed.hostname)) {
+    return;
+  }
+
+  let resolvesPrivate = false;
+  try {
+    resolvesPrivate = await resolvedHostIsLocalOrPrivate(parsed.hostname);
+  } catch (err) {
+    throw new ConfigError(
+      `Model '${modelId}' apiBaseUrl host '${parsed.hostname}' could not be resolved for private-network validation: ${(err as Error).message}`,
+      3,
+    );
+  }
+
+  if (resolvesPrivate) {
+    throw new ConfigError(
+      `Model '${modelId}' apiBaseUrl must not resolve to localhost/private networks. Set WAVESPEED_ALLOW_INSECURE_API_BASE_URL=1 only for trusted local testing.`,
+      3,
+    );
+  }
 }
 
 function validateApiBaseUrl(
@@ -291,7 +342,9 @@ export async function resolveModelForRequest(
     // through config, registry, or built-in defaults when cache reads fail.
   }
 
-  return resolveModel(commandName, cliModelFlag, config, apiCache);
+  const model = resolveModel(commandName, cliModelFlag, config, apiCache);
+  await validateResolvedApiBaseUrlHost(model.id, model.apiBaseUrl);
+  return model;
 }
 
 /**

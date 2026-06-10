@@ -136,6 +136,18 @@ describe("Validation Utils", () => {
       expect(dataUris[1]).toStartWith("data:image/png;base64,");
     });
 
+    it("should parse mixed-case image data URIs", async () => {
+      const mixedCaseDataUri = testImageDataUri.replace(
+        "data:image/png;base64,",
+        "DATA:IMAGE/PNG;BASE64,",
+      );
+      const dataUris = await parseImagesList(`${mixedCaseDataUri},${mixedCaseDataUri}`, true, 10);
+
+      expect(dataUris).toHaveLength(2);
+      expect(dataUris[0]).toStartWith("DATA:IMAGE/PNG;BASE64,");
+      expect(dataUris[1]).toStartWith("DATA:IMAGE/PNG;BASE64,");
+    });
+
     it("should disable local files when requested", async () => {
       await expect(
         parseImagesList(testImagePath, true, 10, { allowLocalFiles: false }),

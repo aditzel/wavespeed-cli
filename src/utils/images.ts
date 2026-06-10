@@ -143,12 +143,31 @@ function assertSupportedImage(bytes: Uint8Array, context: string): string {
   return mime;
 }
 
-function normalizeBase64(input: string): string {
-  if (input.startsWith("data:")) {
-    const idx = input.indexOf("base64,");
-    return idx !== -1 ? input.slice(idx + "base64,".length) : input;
+function extensionForImageMime(mime: string): string {
+  switch (mime) {
+    case "image/jpeg":
+      return ".jpg";
+    case "image/png":
+      return ".png";
+    case "image/gif":
+      return ".gif";
+    case "image/webp":
+      return ".webp";
+    case "image/bmp":
+      return ".bmp";
+    default:
+      return ".img";
   }
-  return input;
+}
+
+function withImageExtension(destPath: string, mime: string): string {
+  const parsed = path.parse(destPath);
+  return path.join(parsed.dir, `${parsed.name}${extensionForImageMime(mime)}`);
+}
+
+function normalizeBase64(input: string): string {
+  const match = /^data:[^,]*;base64,/i.exec(input.trim());
+  return match ? input.trim().slice(match[0].length) : input;
 }
 
 export function decodeBase64Image(input: string, maxBytes = DEFAULT_MAX_IMAGE_BYTES): Buffer {
@@ -189,7 +208,8 @@ export async function saveBase64Image(
   maxBytes = DEFAULT_MAX_IMAGE_BYTES,
 ): Promise<string> {
   const buf = decodeBase64Image(base64, maxBytes);
-  return writeUniqueFile(destPath, buf);
+  const mime = assertSupportedImage(buf, "Image data");
+  return writeUniqueFile(withImageExtension(destPath, mime), buf);
 }
 
 /**
@@ -366,6 +386,11 @@ function getHeader(headers: IncomingHttpHeaders, name: string): string | undefin
   return value;
 }
 
+function discardResponseBody(body: IncomingMessage): void {
+  body.resume();
+  body.destroy();
+}
+
 function requestPinnedUrl(
   url: URL,
   pinnedAddress: PinnedAddress,
@@ -429,7 +454,7 @@ async function requestImageWithRedirects(
       const res = await requestPinnedUrl(url, address, options);
 
       if (res.statusCode >= 300 && res.statusCode < 400) {
-        res.body.resume();
+        discardResponseBody(res.body);
         const location = getHeader(res.headers, "location");
         if (!location) {
           throw new Error(`Download redirect missing location for ${redactUrl(inputUrl)}`);
@@ -509,7 +534,7 @@ export async function downloadImageFromUrl(
 ): Promise<string> {
   const res = await requestImageWithRedirects(url, options);
   if (res.statusCode < 200 || res.statusCode >= 300) {
-    res.body.resume();
+    discardResponseBody(res.body);
     throw new Error(`Download failed ${res.statusCode} ${res.statusMessage} for ${redactUrl(url)}`);
   }
 
@@ -520,6 +545,7 @@ export async function downloadImageFromUrl(
     !normalizedContentType.startsWith("image/") &&
     normalizedContentType !== "application/octet-stream"
   ) {
+    discardResponseBody(res.body);
     throw new Error(`Download did not return an image content type for ${redactUrl(url)}`);
   }
 
@@ -529,15 +555,19 @@ export async function downloadImageFromUrl(
     options.maxBytes ?? DEFAULT_MAX_IMAGE_BYTES,
     options.timeoutMs ?? DEFAULT_DOWNLOAD_TIMEOUT_MS,
   );
-  assertSupportedImage(bytes, "Downloaded output");
-  return writeUniqueFile(destPath, bytes);
+  const mime = assertSupportedImage(bytes, "Downloaded output");
+  return writeUniqueFile(withImageExtension(destPath, mime), bytes);
 }
 
 async function resolveValidatedLocalImagePath(
   filePath: string,
   options: LocalImageReadOptions = {},
 ): Promise<string> {
-  const info = await lstat(filePath);
+  const candidatePath =
+    options.rootDir && !path.isAbsolute(filePath)
+      ? path.resolve(options.rootDir, filePath)
+      : filePath;
+  const info = await lstat(candidatePath);
   if (!info.isFile()) {
     throw new Error(`Image path is not a regular file: ${filePath}`);
   }
@@ -550,7 +580,7 @@ async function resolveValidatedLocalImagePath(
     throw new Error(`Image exceeds maximum size of ${maxBytes} bytes: ${filePath}`);
   }
 
-  const resolvedPath = await realpath(filePath);
+  const resolvedPath = await realpath(candidatePath);
   if (options.rootDir) {
     const root = await realpath(options.rootDir);
     if (!isSubpath(resolvedPath, root)) {

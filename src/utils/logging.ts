@@ -32,10 +32,11 @@ export function redactUrl(value: string): string {
     }
     return url.toString();
   } catch {
-    const queryIndex = value.indexOf("?");
+    const withoutCredentials = value.replace(/(\/\/)[^/?#\s@]+@/g, "$1<redacted>@");
+    const queryIndex = withoutCredentials.indexOf("?");
     if (queryIndex === -1) {
-      return value;
+      return withoutCredentials;
     }
-    return `${value.slice(0, queryIndex)}?redacted`;
+    return `${withoutCredentials.slice(0, queryIndex)}?redacted`;
   }
 }

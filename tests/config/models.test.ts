@@ -375,6 +375,25 @@ describe("config/models.resolveModel", () => {
     expect(() => resolveModel("generate", undefined, config)).toThrow(ConfigError);
   });
 
+  it("blocks trailing-dot localhost API base URLs by default", () => {
+    process.env.C_KEY = "secret";
+
+    const config = makeConfig({
+      models: {
+        local: {
+          provider: "custom",
+          apiKeyEnv: "C_KEY",
+          apiBaseUrl: "https://foo.localhost.",
+        },
+      },
+      defaults: {
+        globalModel: "local",
+      },
+    });
+
+    expect(() => resolveModel("generate", undefined, config)).toThrow(ConfigError);
+  });
+
   it("infers ai-remover routing for configured aliases that point at remover models", () => {
     process.env.WAVESPEED_API_KEY = "test-key";
 

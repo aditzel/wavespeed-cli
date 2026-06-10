@@ -81,6 +81,15 @@ describe("Image Utils", () => {
         Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
       );
     });
+
+    it("should resolve relative paths under a configured input root", async () => {
+      const base64 = await convertFileToBase64("test.png", { rootDir: testDir });
+      const decoded = Buffer.from(base64, "base64");
+
+      expect(decoded.subarray(0, 8)).toEqual(
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      );
+    });
   });
 
   describe("saveBase64Image", () => {
@@ -112,6 +121,13 @@ describe("Image Utils", () => {
       const originalContent = await readFile(testImagePath);
       expect(savedContent).toEqual(originalContent);
     });
+
+    it("should preserve the detected image extension", async () => {
+      const jpegBase64 = Buffer.from([0xff, 0xd8, 0xff, 0xdb]).toString("base64");
+      const savedPath = await saveBase64Image(jpegBase64, path.join(outputDir, "saved-jpeg.png"));
+
+      expect(path.extname(savedPath)).toBe(".jpg");
+    });
   });
 
   describe("saveImagesFromOutputs", () => {
@@ -120,7 +136,8 @@ describe("Image Utils", () => {
 
     beforeAll(async () => {
       server = createServer(async (req, res) => {
-        if (req.url?.includes("valid") || req.url?.includes("image")) {
+        const pathname = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
+        if (pathname === "/valid.png" || pathname === "/image1.png" || pathname === "/image2.png") {
           const pngData = await readFile(testImagePath);
           res.writeHead(200, { "content-type": "image/png" });
           res.end(pngData);
@@ -208,8 +225,9 @@ describe("Image Utils", () => {
 
     it("should reject output directories outside a configured root", async () => {
       const base64 = await convertFileToBase64(testImagePath);
+      const outsideDir = path.resolve(outputDir, "..", "outside");
       await expect(
-        saveImagesFromOutputs([base64], "../outside", "task", { outputRoot: outputDir }),
+        saveImagesFromOutputs([base64], outsideDir, "task", { outputRoot: outputDir }),
       ).rejects.toThrow("Output directory must stay within configured output root");
     });
 
