@@ -72,6 +72,42 @@ function resolveOutputDir(outputDir: string, outputRoot?: string): string {
   return requested;
 }
 
+async function nearestExistingAncestor(candidate: string): Promise<string> {
+  let current = path.resolve(candidate);
+
+  while (true) {
+    try {
+      await stat(current);
+      return current;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw err;
+      }
+
+      const parent = path.dirname(current);
+      if (parent === current) {
+        throw err;
+      }
+      current = parent;
+    }
+  }
+}
+
+async function validateOutputAncestorWithinRoot(
+  resolvedOutputDir: string,
+  outputRoot: string,
+): Promise<{ rootRealPath: string }> {
+  const rootRealPath = await realpath(path.resolve(outputRoot));
+  const outputAncestor = await nearestExistingAncestor(resolvedOutputDir);
+  const outputAncestorRealPath = await realpath(outputAncestor);
+
+  if (!isSubpath(outputAncestorRealPath, rootRealPath)) {
+    throw new Error(`Output directory must stay within configured output root: ${rootRealPath}`);
+  }
+
+  return { rootRealPath };
+}
+
 async function writeUniqueFile(destPath: string, data: Uint8Array | Buffer): Promise<string> {
   const parsed = path.parse(destPath);
 
@@ -563,10 +599,17 @@ async function resolveValidatedLocalImagePath(
   filePath: string,
   options: LocalImageReadOptions = {},
 ): Promise<string> {
-  const candidatePath =
-    options.rootDir && !path.isAbsolute(filePath)
-      ? path.resolve(options.rootDir, filePath)
-      : filePath;
+  const rootPath = options.rootDir ? path.resolve(options.rootDir) : undefined;
+  const candidatePath = rootPath
+    ? path.isAbsolute(filePath)
+      ? path.resolve(filePath)
+      : path.resolve(rootPath, filePath)
+    : path.resolve(filePath);
+
+  if (rootPath && !isSubpath(candidatePath, rootPath)) {
+    throw new Error(`Image file must stay within configured input root: ${rootPath}`);
+  }
+
   const info = await lstat(candidatePath);
   if (!info.isFile()) {
     throw new Error(`Image path is not a regular file: ${filePath}`);
@@ -655,9 +698,16 @@ export async function saveImagesFromOutputs(
   failed: { index: number; reason: string }[];
 }> {
   const resolvedOutputDir = resolveOutputDir(outputDir, options.outputRoot);
-  await ensureOutputDir(resolvedOutputDir);
+  let rootRealPath: string | undefined;
   if (options.outputRoot) {
-    const rootRealPath = await realpath(path.resolve(options.outputRoot));
+    ({ rootRealPath } = await validateOutputAncestorWithinRoot(
+      resolvedOutputDir,
+      options.outputRoot,
+    ));
+  }
+
+  await ensureOutputDir(resolvedOutputDir);
+  if (rootRealPath) {
     const outputRealPath = await realpath(resolvedOutputDir);
     if (!isSubpath(outputRealPath, rootRealPath)) {
       throw new Error(`Output directory must stay within configured output root: ${rootRealPath}`);

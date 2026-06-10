@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import path from "node:path";
 import {
@@ -88,6 +88,12 @@ describe("Image Utils", () => {
 
       expect(decoded.subarray(0, 8)).toEqual(
         Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      );
+    });
+
+    it("should reject root escapes before probing local image paths", async () => {
+      await expect(convertFileToBase64("../outside.png", { rootDir: testDir })).rejects.toThrow(
+        "Image file must stay within configured input root",
       );
     });
   });
@@ -229,6 +235,24 @@ describe("Image Utils", () => {
       await expect(
         saveImagesFromOutputs([base64], outsideDir, "task", { outputRoot: outputDir }),
       ).rejects.toThrow("Output directory must stay within configured output root");
+    });
+
+    it("should reject symlinked output ancestors before creating directories", async () => {
+      const base64 = await convertFileToBase64(testImagePath);
+      const outsideTarget = path.join(testDir, "outside-target");
+      const symlinkPath = path.join(outputDir, "linked-outside");
+      const escapedNestedDir = path.join(outsideTarget, "nested");
+
+      await mkdir(outsideTarget, { recursive: true });
+      await rm(symlinkPath, { force: true, recursive: true });
+      await symlink(outsideTarget, symlinkPath, "dir");
+
+      await expect(
+        saveImagesFromOutputs([base64], "linked-outside/nested", "task", {
+          outputRoot: outputDir,
+        }),
+      ).rejects.toThrow("Output directory must stay within configured output root");
+      expect(await fileExists(escapedNestedDir)).toBe(false);
     });
 
     it("should reject private network download URLs", async () => {
