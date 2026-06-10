@@ -93,7 +93,7 @@ export function registerModels(program: Command) {
         // Add registry models
         for (const rm of registryModels) {
           displayMap.set(rm.modelName, {
-            // Key by modelName (e.g. "bytedance/seedream-v4")
+            // Key by modelName (e.g. "provider/model-id")
             name: rm.name,
             desc: rm.description || "",
             source: ["Registry"],

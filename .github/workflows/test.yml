@@ -2,81 +2,86 @@ name: Test and Build
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Bun
-      uses: oven-sh/setup-bun@v1
-      with:
-        bun-version: latest
-        
-    - name: Install dependencies
-      run: bun install
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
 
-    - name: Build CLI
-      run: bun run build
-      
-    - name: Run tests
-      run: bun test
-      
-    - name: Test CLI executable
-      run: ./dist/index.js --help
-      
-    - name: Verify CLI commands
-      run: |
-        ./dist/index.js generate --help
-        ./dist/index.js edit --help
-        ./dist/index.js generate-sequential --help
-        ./dist/index.js edit-sequential --help
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build CLI
+        run: bun run build
+
+      - name: Run tests
+        run: bun test
+
+      - name: Test CLI executable
+        run: ./dist/index.js --help
+
+      - name: Verify CLI commands
+        run: |
+          ./dist/index.js generate --help
+          ./dist/index.js edit --help
+          ./dist/index.js generate-sequential --help
+          ./dist/index.js edit-sequential --help
 
   validate-implementation:
     runs-on: ubuntu-latest
     needs: test
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Bun
-      uses: oven-sh/setup-bun@v1
-      with:
-        bun-version: latest
-        
-    - name: Install dependencies
-      run: bun install
-      
-    - name: Build CLI
-      run: bun run build
-      
-    - name: Test sync mode parameter
-      run: |
-        # Test that sync mode is available in all commands
-        ./dist/index.js generate --help | grep -q "sync.*mode" || exit 1
-        ./dist/index.js edit --help | grep -q "sync.*mode" || exit 1
-        ./dist/index.js generate-sequential --help | grep -q "sync.*mode" || exit 1
-        ./dist/index.js edit-sequential --help | grep -q "sync.*mode" || exit 1
-        
-    - name: Test file upload support
-      run: |
-        # Test that file path support is documented
-        ./dist/index.js edit --help | grep -q "file paths" || exit 1
-        ./dist/index.js edit-sequential --help | grep -q "file paths" || exit 1
-        
-    - name: Test parameter validation
-      env:
-        WAVESPEED_API_KEY: test-key
-      run: |
-        # Test validation without API calls
-        ! ./dist/index.js edit 2>&1 | grep -q "Prompt is required" || echo "✓ Prompt validation works"
-        ! ./dist/index.js edit -p "test" 2>&1 | grep -q "Images are required" || echo "✓ Images validation works"
-        ! ./dist/index.js edit -p "test" -i "https://example.com/test.jpg" -s "invalid" 2>&1 | grep -q "Size must be WIDTH" || echo "✓ Size validation works"
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build CLI
+        run: bun run build
+
+      - name: Test sync mode parameter
+        run: |
+          # Test that sync mode is available in all commands
+          ./dist/index.js generate --help | grep -q "sync.*mode" || exit 1
+          ./dist/index.js edit --help | grep -q "sync.*mode" || exit 1
+          ./dist/index.js generate-sequential --help | grep -q "sync.*mode" || exit 1
+          ./dist/index.js edit-sequential --help | grep -q "sync.*mode" || exit 1
+
+      - name: Test file upload support
+        run: |
+          # Test that file path support is documented for the local CLI
+          ./dist/index.js edit --help | grep -q "file paths" || exit 1
+          ./dist/index.js edit-sequential --help | grep -q "file paths" || exit 1
+
+      - name: Test parameter validation
+        env:
+          WAVESPEED_API_KEY: test-key
+        run: |
+          # Test validation without API calls
+          ./dist/index.js edit 2>&1 | grep -q "Prompt is required"
+          ./dist/index.js edit -p "test" 2>&1 | grep -q "Images are required"
+          ./dist/index.js edit -p "test" -i "https://example.com/test.jpg" -s "invalid" 2>&1 | grep -q "Size must be WIDTH"

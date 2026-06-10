@@ -13,13 +13,36 @@ import {
   generateSequential,
   type OutputMode,
 } from "../core";
-import { ensurePrompt, parseImagesList, parseMaxImages, parseSize } from "../utils/validation";
+import { debugLog, redactUrl } from "../utils/logging.ts";
+import {
+  ensurePrompt,
+  type ParseImagesListOptions,
+  parseImagesList,
+  parseMaxImages,
+  parseSize,
+} from "../utils/validation";
 
 // Shared schemas
 const outputModeSchema = z.enum(["urls", "paths", "base64"]).default("urls");
 const sizeSchema = z.string().default("2048*2048");
 const modelSchema = z.string().optional();
 const outputDirSchema = z.string().default("./output");
+
+function getMcpOutputRoot(): string {
+  return process.env.WAVESPEED_MCP_OUTPUT_DIR || process.cwd();
+}
+
+function getMcpImageParseOptions(): ParseImagesListOptions {
+  const localFileRoot = process.env.WAVESPEED_MCP_INPUT_DIR;
+  return {
+    allowLocalFiles: Boolean(localFileRoot),
+    localFileRoot,
+  };
+}
+
+function redactModelBaseUrl(apiBaseUrl: string): string {
+  return redactUrl(apiBaseUrl);
+}
 
 /**
  * Register all MCP tools
@@ -53,7 +76,7 @@ function registerListModelsTool(server: McpServer): void {
         search: z
           .string()
           .optional()
-          .describe("Search models by name or ID (e.g., 'flux', 'seedream')"),
+          .describe("Search models by name or ID (e.g., 'flux', 'banana', 'qwen')"),
         limit: z
           .number()
           .int()
@@ -186,11 +209,13 @@ function registerGenerateTool(server: McpServer): void {
         size: sizeSchema.describe("Image size WxH (1024-4096, default: 2048*2048)"),
         model: modelSchema.describe("Model ID (optional, uses config default)"),
         output: outputModeSchema.describe("Output format: urls, paths (save files), or base64"),
-        outputDir: outputDirSchema.describe("Directory to save images (for paths mode)"),
+        outputDir: outputDirSchema.describe(
+          "Directory to save images, relative to MCP output root (for paths mode)",
+        ),
       },
     },
     async ({ prompt, size, model, output, outputDir }) => {
-      console.error(
+      debugLog(
         `[DEBUG] MCP generate tool invoked: prompt length=${prompt.length}, size=${size}, model=${model || "default"}, output=${output}`,
       );
       try {
@@ -198,15 +223,15 @@ function registerGenerateTool(server: McpServer): void {
         const validatedSize = parseSize(size);
         const outputMode = output as OutputMode;
 
-        console.error(`[DEBUG] MCP generate: Loading config...`);
+        debugLog(`[DEBUG] MCP generate: Loading config...`);
         const { config } = loadConfig();
-        console.error(`[DEBUG] MCP generate: Config loaded, resolving model...`);
+        debugLog(`[DEBUG] MCP generate: Config loaded, resolving model...`);
         const resolvedModel = await resolveModelForRequest("generate", model, config);
-        console.error(
-          `[DEBUG] MCP generate: Model resolved: id=${resolvedModel.id}, provider=${resolvedModel.provider}, apiBaseUrl=${resolvedModel.apiBaseUrl}`,
+        debugLog(
+          `[DEBUG] MCP generate: Model resolved: id=${resolvedModel.id}, provider=${resolvedModel.provider}, apiBaseUrl=${redactModelBaseUrl(resolvedModel.apiBaseUrl)}`,
         );
 
-        console.error(`[DEBUG] MCP generate: Calling generateImage operation...`);
+        debugLog(`[DEBUG] MCP generate: Calling generateImage operation...`);
         const result = await generateImage({
           prompt: validatedPrompt,
           size: validatedSize,
@@ -216,7 +241,7 @@ function registerGenerateTool(server: McpServer): void {
         });
 
         if (!result.success) {
-          console.error(`[DEBUG] MCP generate: Operation failed: ${result.error}`);
+          debugLog(`[DEBUG] MCP generate: Operation failed: ${result.error}`);
           return {
             content: [
               {
@@ -234,9 +259,11 @@ function registerGenerateTool(server: McpServer): void {
           };
         }
 
-        console.error(`[DEBUG] MCP generate: Operation succeeded, formatting response...`);
-        const formatted = await formatForMCP(result, outputMode, outputDir);
-        console.error(
+        debugLog(`[DEBUG] MCP generate: Operation succeeded, formatting response...`);
+        const formatted = await formatForMCP(result, outputMode, outputDir, {
+          outputRoot: getMcpOutputRoot(),
+        });
+        debugLog(
           `[DEBUG] MCP generate: Response formatted, returning ${formatted.images.length} images`,
         );
         return {
@@ -244,7 +271,7 @@ function registerGenerateTool(server: McpServer): void {
         };
       } catch (err) {
         const error = err as Error | ConfigError;
-        console.error(
+        debugLog(
           `[DEBUG] MCP generate: Exception caught: ${error.message}${error instanceof ConfigError ? " (ConfigError)" : ""}`,
         );
         if (error instanceof ConfigError) {
@@ -279,28 +306,30 @@ function registerEditTool(server: McpServer): void {
         size: sizeSchema.describe("Output image size WxH (default: 2048*2048)"),
         model: modelSchema.describe("Model ID (optional)"),
         output: outputModeSchema.describe("Output format: urls, paths, or base64"),
-        outputDir: outputDirSchema.describe("Directory to save images"),
+        outputDir: outputDirSchema.describe(
+          "Directory to save images, relative to MCP output root",
+        ),
       },
     },
     async ({ prompt, images, size, model, output, outputDir }) => {
-      console.error(
+      debugLog(
         `[DEBUG] MCP edit tool invoked: prompt length=${prompt.length}, images=${images.length}, size=${size}, model=${model || "default"}, output=${output}`,
       );
       try {
         const validatedPrompt = ensurePrompt(prompt);
-        const validatedImages = await parseImagesList(images.join(","), true, 10);
+        const validatedImages = await parseImagesList(images, true, 10, getMcpImageParseOptions());
         const validatedSize = parseSize(size);
         const outputMode = output as OutputMode;
 
-        console.error(`[DEBUG] MCP edit: Loading config...`);
+        debugLog(`[DEBUG] MCP edit: Loading config...`);
         const { config } = loadConfig();
-        console.error(`[DEBUG] MCP edit: Config loaded, resolving model...`);
+        debugLog(`[DEBUG] MCP edit: Config loaded, resolving model...`);
         const resolvedModel = await resolveModelForRequest("edit", model, config);
-        console.error(
-          `[DEBUG] MCP edit: Model resolved: id=${resolvedModel.id}, provider=${resolvedModel.provider}, apiBaseUrl=${resolvedModel.apiBaseUrl}`,
+        debugLog(
+          `[DEBUG] MCP edit: Model resolved: id=${resolvedModel.id}, provider=${resolvedModel.provider}, apiBaseUrl=${redactModelBaseUrl(resolvedModel.apiBaseUrl)}`,
         );
 
-        console.error(`[DEBUG] MCP edit: Calling editImage operation...`);
+        debugLog(`[DEBUG] MCP edit: Calling editImage operation...`);
         const result = await editImage({
           prompt: validatedPrompt,
           images: validatedImages,
@@ -311,7 +340,7 @@ function registerEditTool(server: McpServer): void {
         });
 
         if (!result.success) {
-          console.error(`[DEBUG] MCP edit: Operation failed: ${result.error}`);
+          debugLog(`[DEBUG] MCP edit: Operation failed: ${result.error}`);
           return {
             content: [
               {
@@ -323,9 +352,11 @@ function registerEditTool(server: McpServer): void {
           };
         }
 
-        console.error(`[DEBUG] MCP edit: Operation succeeded, formatting response...`);
-        const formatted = await formatForMCP(result, outputMode, outputDir);
-        console.error(
+        debugLog(`[DEBUG] MCP edit: Operation succeeded, formatting response...`);
+        const formatted = await formatForMCP(result, outputMode, outputDir, {
+          outputRoot: getMcpOutputRoot(),
+        });
+        debugLog(
           `[DEBUG] MCP edit: Response formatted, returning ${formatted.images.length} images`,
         );
         return {
@@ -333,7 +364,7 @@ function registerEditTool(server: McpServer): void {
         };
       } catch (err) {
         const error = err as Error | ConfigError;
-        console.error(
+        debugLog(
           `[DEBUG] MCP edit: Exception caught: ${error.message}${error instanceof ConfigError ? " (ConfigError)" : ""}`,
         );
         if (error instanceof ConfigError) {
@@ -368,11 +399,13 @@ function registerGenerateSequentialTool(server: McpServer): void {
         size: sizeSchema.describe("Image size WxH (default: 2048*2048)"),
         model: modelSchema.describe("Model ID (optional)"),
         output: outputModeSchema.describe("Output format: urls, paths, or base64"),
-        outputDir: outputDirSchema.describe("Directory to save images"),
+        outputDir: outputDirSchema.describe(
+          "Directory to save images, relative to MCP output root",
+        ),
       },
     },
     async ({ prompt, count, size, model, output, outputDir }) => {
-      console.error(
+      debugLog(
         `[DEBUG] MCP generate_sequential tool invoked: prompt length=${prompt.length}, count=${count}, size=${size}, model=${model || "default"}, output=${output}`,
       );
       try {
@@ -381,15 +414,15 @@ function registerGenerateSequentialTool(server: McpServer): void {
         const validatedSize = parseSize(size);
         const outputMode = output as OutputMode;
 
-        console.error(`[DEBUG] MCP generate_sequential: Loading config...`);
+        debugLog(`[DEBUG] MCP generate_sequential: Loading config...`);
         const { config } = loadConfig();
-        console.error(`[DEBUG] MCP generate_sequential: Config loaded, resolving model...`);
+        debugLog(`[DEBUG] MCP generate_sequential: Config loaded, resolving model...`);
         const resolvedModel = await resolveModelForRequest("generate-sequential", model, config);
-        console.error(
-          `[DEBUG] MCP generate_sequential: Model resolved: id=${resolvedModel.id}, provider=${resolvedModel.provider}, apiBaseUrl=${resolvedModel.apiBaseUrl}`,
+        debugLog(
+          `[DEBUG] MCP generate_sequential: Model resolved: id=${resolvedModel.id}, provider=${resolvedModel.provider}, apiBaseUrl=${redactModelBaseUrl(resolvedModel.apiBaseUrl)}`,
         );
 
-        console.error(`[DEBUG] MCP generate_sequential: Calling generateSequential operation...`);
+        debugLog(`[DEBUG] MCP generate_sequential: Calling generateSequential operation...`);
         const result = await generateSequential({
           prompt: validatedPrompt,
           maxImages: validatedCount,
@@ -400,7 +433,7 @@ function registerGenerateSequentialTool(server: McpServer): void {
         });
 
         if (!result.success) {
-          console.error(`[DEBUG] MCP generate_sequential: Operation failed: ${result.error}`);
+          debugLog(`[DEBUG] MCP generate_sequential: Operation failed: ${result.error}`);
           return {
             content: [
               {
@@ -414,11 +447,11 @@ function registerGenerateSequentialTool(server: McpServer): void {
           };
         }
 
-        console.error(
-          `[DEBUG] MCP generate_sequential: Operation succeeded, formatting response...`,
-        );
-        const formatted = await formatForMCP(result, outputMode, outputDir);
-        console.error(
+        debugLog(`[DEBUG] MCP generate_sequential: Operation succeeded, formatting response...`);
+        const formatted = await formatForMCP(result, outputMode, outputDir, {
+          outputRoot: getMcpOutputRoot(),
+        });
+        debugLog(
           `[DEBUG] MCP generate_sequential: Response formatted, returning ${formatted.images.length} images`,
         );
         return {
@@ -426,7 +459,7 @@ function registerGenerateSequentialTool(server: McpServer): void {
         };
       } catch (err) {
         const error = err as Error | ConfigError;
-        console.error(
+        debugLog(
           `[DEBUG] MCP generate_sequential: Exception caught: ${error.message}${error instanceof ConfigError ? " (ConfigError)" : ""}`,
         );
         if (error instanceof ConfigError) {
@@ -468,31 +501,33 @@ function registerEditSequentialTool(server: McpServer): void {
         size: sizeSchema.describe("Output image size WxH (default: 2048*2048)"),
         model: modelSchema.describe("Model ID (optional)"),
         output: outputModeSchema.describe("Output format: urls, paths, or base64"),
-        outputDir: outputDirSchema.describe("Directory to save images"),
+        outputDir: outputDirSchema.describe(
+          "Directory to save images, relative to MCP output root",
+        ),
       },
     },
     async ({ prompt, images, count, size, model, output, outputDir }) => {
-      console.error(
+      debugLog(
         `[DEBUG] MCP edit_sequential tool invoked: prompt length=${prompt.length}, images=${images?.length || 0}, count=${count}, size=${size}, model=${model || "default"}, output=${output}`,
       );
       try {
         const validatedPrompt = ensurePrompt(prompt);
         const validatedImages = images?.length
-          ? await parseImagesList(images.join(","), false, 10)
+          ? await parseImagesList(images, false, 10, getMcpImageParseOptions())
           : undefined;
         const validatedCount = parseMaxImages(count?.toString());
         const validatedSize = parseSize(size);
         const outputMode = output as OutputMode;
 
-        console.error(`[DEBUG] MCP edit_sequential: Loading config...`);
+        debugLog(`[DEBUG] MCP edit_sequential: Loading config...`);
         const { config } = loadConfig();
-        console.error(`[DEBUG] MCP edit_sequential: Config loaded, resolving model...`);
+        debugLog(`[DEBUG] MCP edit_sequential: Config loaded, resolving model...`);
         const resolvedModel = await resolveModelForRequest("edit-sequential", model, config);
-        console.error(
-          `[DEBUG] MCP edit_sequential: Model resolved: id=${resolvedModel.id}, provider=${resolvedModel.provider}, apiBaseUrl=${resolvedModel.apiBaseUrl}`,
+        debugLog(
+          `[DEBUG] MCP edit_sequential: Model resolved: id=${resolvedModel.id}, provider=${resolvedModel.provider}, apiBaseUrl=${redactModelBaseUrl(resolvedModel.apiBaseUrl)}`,
         );
 
-        console.error(`[DEBUG] MCP edit_sequential: Calling editSequential operation...`);
+        debugLog(`[DEBUG] MCP edit_sequential: Calling editSequential operation...`);
         const result = await editSequential({
           prompt: validatedPrompt,
           images: validatedImages,
@@ -504,7 +539,7 @@ function registerEditSequentialTool(server: McpServer): void {
         });
 
         if (!result.success) {
-          console.error(`[DEBUG] MCP edit_sequential: Operation failed: ${result.error}`);
+          debugLog(`[DEBUG] MCP edit_sequential: Operation failed: ${result.error}`);
           return {
             content: [
               {
@@ -516,9 +551,11 @@ function registerEditSequentialTool(server: McpServer): void {
           };
         }
 
-        console.error(`[DEBUG] MCP edit_sequential: Operation succeeded, formatting response...`);
-        const formatted = await formatForMCP(result, outputMode, outputDir);
-        console.error(
+        debugLog(`[DEBUG] MCP edit_sequential: Operation succeeded, formatting response...`);
+        const formatted = await formatForMCP(result, outputMode, outputDir, {
+          outputRoot: getMcpOutputRoot(),
+        });
+        debugLog(
           `[DEBUG] MCP edit_sequential: Response formatted, returning ${formatted.images.length} images`,
         );
         return {
@@ -526,7 +563,7 @@ function registerEditSequentialTool(server: McpServer): void {
         };
       } catch (err) {
         const error = err as Error | ConfigError;
-        console.error(
+        debugLog(
           `[DEBUG] MCP edit_sequential: Exception caught: ${error.message}${error instanceof ConfigError ? " (ConfigError)" : ""}`,
         );
         if (error instanceof ConfigError) {

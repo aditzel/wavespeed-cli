@@ -87,7 +87,12 @@ describe("CLI Integration Tests", () => {
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> => {
     const spawnedProcess = spawn([process.execPath, "run", cliEntryPath, ...args], {
       cwd: tempDir,
-      env: { ...Bun.env, WAVESPEED_API_KEY: "test-cli-key" },
+      env: {
+        ...Bun.env,
+        WAVESPEED_API_KEY: "test-cli-key",
+        WAVESPEED_ALLOW_CUSTOM_API_BASE_URL: "1",
+        WAVESPEED_ALLOW_INSECURE_API_BASE_URL: "1",
+      },
       stdout: "pipe",
       stderr: "pipe",
     });

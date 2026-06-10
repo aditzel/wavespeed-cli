@@ -5,13 +5,14 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
 [![Bun](https://img.shields.io/badge/Bun-Runtime-f9f1e1.svg)](https://bun.sh)
 
-A powerful command-line interface for [Wavespeed AI](https://wavespeed.ai)'s image generation and editing APIs. Generate stunning images from text prompts, edit existing images, and create consistent image sequences—all from your terminal.
+A Wavespeed AI image generation toolkit for both agentic workflows and terminal use. Run it as a stdio MCP server for coding agents, or use the `wavespeed` CLI directly to generate images from text prompts, edit existing images, and create consistent image sequences.
 
 ## Table of Contents
 
 - [Quick Start](#quick-start)
 - [Features](#features)
 - [Installation](#installation)
+- [Agent Skill and MCP Usage](#agent-skill-and-mcp-usage)
 - [Configuration](#configuration)
 - [Usage](#usage)
 - [Multi-model Selection](#multi-model-selection)
@@ -37,7 +38,10 @@ bun install && bun run build && bun link
 # Set your API key
 export WAVESPEED_API_KEY="your_api_key_here"
 
-# Generate your first image
+# Start the MCP server for agentic coding tools
+wavespeed mcp
+
+# Or generate your first image from the CLI
 wavespeed generate --prompt "a photorealistic cat sitting on a windowsill"
 ```
 
@@ -51,12 +55,14 @@ wavespeed generate --prompt "a photorealistic cat sitting on a windowsill"
 | **Image Editing** | Modify existing images with natural language prompts |
 | **Sequential Generation** | Generate consistent image sequences for animations or storyboards |
 | **Sequential Editing** | Edit multiple images while maintaining visual consistency |
+| **MCP Server** | Expose image generation/editing tools to agentic coding environments |
 
 ### Developer Experience
 
 - **Auto-Download**: Images are automatically downloaded when generation completes
 - **Base64 Support**: Seamlessly decode and save base64-encoded image outputs
-- **Multi-Model Support**: Switch between different AI providers and models via configuration
+- **MCP-first Agent Workflows**: Ships a standard Agent Skill and stdio MCP server for coding agents
+- **Multi-Model Support**: Discover Wavespeed's current model catalog and switch models via config or `--model`
 - **Flexible Configuration**: JSON/YAML config files with environment variable interpolation
 - **Comprehensive Validation**: Clear error messages with actionable guidance
 
@@ -90,7 +96,7 @@ bun link
 
 ### Set Up Your API Key
 
-The CLI requires a Wavespeed API key. Set it as an environment variable:
+The MCP server and CLI require a Wavespeed API key. Set it as an environment variable:
 
 **Bash/Zsh:**
 ```bash
@@ -103,16 +109,54 @@ export WAVESPEED_API_KEY="your_api_key_here"
 set -Ux WAVESPEED_API_KEY "your_api_key_here"
 ```
 
+## Agent Skill and MCP Usage
+
+This package is designed to be used by agentic coding tools through MCP first, with CLI commands as a fallback.
+
+### Start the MCP server
+
+```bash
+wavespeed mcp
+```
+
+The stdio MCP server exposes tools for:
+
+- `list_models` - discover current Wavespeed models and model types
+- `generate` - text-to-image generation
+- `edit` - image-to-image editing
+- `generate_sequential` - consistent multi-image sequences
+- `edit_sequential` - sequential image editing
+
+Use MCP output mode `paths` when an agent should save files, `urls` for compact responses, and `base64` only when inline image bytes are required.
+
+MCP safety defaults:
+
+- Local input file paths are disabled by default for MCP image-edit tools. Set `WAVESPEED_MCP_INPUT_DIR=/trusted/images` to allow local image reads only under that directory.
+- `paths` output is confined to `WAVESPEED_MCP_OUTPUT_DIR` when set, otherwise the MCP server working directory. Relative `outputDir` values are resolved under that root.
+- Custom/non-Wavespeed API base URLs in MCP mode require `WAVESPEED_ALLOW_CUSTOM_API_BASE_URL=1`.
+
+### Agent Skill
+
+A portable Agent Skill is included at:
+
+```text
+skills/wavespeed-image-generation/SKILL.md
+```
+
+Install or reference that skill from your agent harness to teach agents to prefer the Wavespeed MCP server, discover models at runtime, save outputs safely, and fall back to CLI commands when MCP is unavailable.
+
 ## Configuration
 
 ### Default Configuration
 
-By default, the CLI uses the built-in Wavespeed Seedream V4 configuration with `WAVESPEED_API_KEY` from your environment. No config file is required for basic usage.
+By default, the CLI and MCP server use the built-in Wavespeed configuration with `WAVESPEED_API_KEY` from your environment. No config file is required for basic usage.
 
-If no config file is present, all commands:
+If no config file is present, commands:
 - Use `https://api.wavespeed.ai`
 - Use `WAVESPEED_API_KEY`
-- Target the Bytedance Seedream V4 endpoints
+- Resolve to the built-in default model alias for backwards-compatible basic generation/editing
+
+For best results, use `wavespeed models` or the MCP `list_models` tool to discover current Wavespeed models and pass a model id explicitly with `--model` or the MCP `model` argument.
 
 ### Config file discovery (multi-model support)
 
@@ -147,26 +191,29 @@ Minimal JSON example:
 ```json
 {
   "models": {
-    "seedream-v4": {
+    "fast-image": {
       "provider": "wavespeed",
       "apiBaseUrl": "https://api.wavespeed.ai",
       "apiKeyEnv": "WAVESPEED_API_KEY",
-      "modelName": "bytedance/seedream-v4"
+      "modelName": "wavespeed-ai/flux-dev"
     },
-    "my-alt-model": {
+    "image-editor": {
+      "provider": "wavespeed",
+      "apiBaseUrl": "https://api.wavespeed.ai",
+      "apiKeyEnv": "WAVESPEED_API_KEY",
+      "modelName": "google/nano-banana-2"
+    },
+    "my-gateway-model": {
       "provider": "openai-compatible",
       "apiBaseUrl": "https://api.my-gateway.example",
       "apiKeyEnv": "MY_GATEWAY_API_KEY",
-      "modelName": "bytedance/seedream-v4"
+      "modelName": "provider/model-name"
     }
   },
   "defaults": {
-    "globalModel": "seedream-v4",
     "commands": {
-      "generate": "seedream-v4",
-      "edit": "seedream-v4",
-      "generate-sequential": "seedream-v4",
-      "edit-sequential": "seedream-v4"
+      "generate": "fast-image",
+      "edit": "image-editor"
     }
   }
 }
@@ -185,7 +232,7 @@ Key points:
       - Environment variable name holding the API key.
       - Defaults to `WAVESPEED_API_KEY` for `wavespeed` if omitted.
     - `modelName`:
-      - Base remote model identifier for configured aliases (e.g. `"bytedance/seedream-v4"`).
+      - Base remote model identifier for configured aliases (e.g. `"wavespeed-ai/flux-dev"`).
       - The CLI/MCP derive command-specific routes such as `/edit` or `/sequential` from this value.
       - If you want to use a fully canonical, operation-specific model ID such as `"google/nano-banana-2/text-to-image"`, pass it directly with `--model` instead of storing it as an ergonomic cross-command alias.
     - `type`, `requestDefaults`:
@@ -227,6 +274,15 @@ Example:
 ```
 
 If `GATEWAY_BASE_URL` or `GATEWAY_API_KEY` are missing at runtime when this model is selected, the CLI exits with a configuration/secret error as described below.
+
+### Custom endpoint safety
+
+To reduce accidental credential leaks from project-local config files:
+
+- `apiBaseUrl` must be `https://` by default and must not include credentials, query strings, or fragments.
+- Localhost/private-network API bases are blocked by default. Use `WAVESPEED_ALLOW_INSECURE_API_BASE_URL=1` only for trusted local testing.
+- Sending `WAVESPEED_API_KEY` (or a `wavespeed` provider model) to a non-Wavespeed host is blocked unless `WAVESPEED_ALLOW_CUSTOM_API_BASE_URL=1` is set.
+- In MCP mode, any non-Wavespeed API base requires `WAVESPEED_ALLOW_CUSTOM_API_BASE_URL=1`.
 
 ## Usage
 
@@ -326,7 +382,7 @@ Model selection for each command follows:
 1. CLI flag `--model <id>`:
    - Accepts:
      - a configured model alias from `models`
-     - a built-in registry id such as `seedream-v4`
+     - a built-in registry id shown by `wavespeed models`
      - a raw Wavespeed API model id such as `google/nano-banana-2/text-to-image`
    - Unknown plain ids still fail with configuration error (exit code 3).
 2. Command-level default:
@@ -334,7 +390,7 @@ Model selection for each command follows:
 3. Global default:
    - `defaults.globalModel` if present.
 4. Built-in fallback:
-   - Wavespeed Seedream V4 using `WAVESPEED_API_KEY`.
+   - the built-in Wavespeed default model using `WAVESPEED_API_KEY`.
    - If `WAVESPEED_API_KEY` is missing here: exit code 2.
 
 This behavior is implemented centrally and used by all commands.
@@ -355,57 +411,29 @@ wavespeed generate --model google/nano-banana-2/text-to-image --prompt "A dragon
 wavespeed edit --prompt "style it" --images "https://example.com/img.png"
 ```
 
-## Listing configured models
+## Listing models
 
-The CLI provides global flags:
-
-```bash
-wavespeed --list-models
-wavespeed --list-models-json
-```
-
-Behavior:
-
-- When either flag is present:
-  - The CLI lists models and exits with code 0.
-  - If used alongside a subcommand, the listing still runs and the command is not executed.
-
-Text output example:
-
-```text
-Config source: /path/to/.wavespeedrc.json
-seedream-v4 * [cmd=generate,edit] provider=wavespeed baseUrl=https://api.wavespeed.ai modelName=bytedance/seedream-v4 keyEnv=WAVESPEED_API_KEY
-my-alt-model [cmd=generate] provider=openai-compatible baseUrl=https://api.my-gateway.example modelName=bytedance/seedream-v4 keyEnv=MY_GATEWAY_API_KEY
-```
-
-- `*` marks the global default model.
-- `[cmd=...]` lists commands for which this model is the default.
-
-JSON output example:
+Use the `models` subcommand to see configured aliases, built-in registry entries, and live Wavespeed API models when an API key is available:
 
 ```bash
-wavespeed --list-models-json
+wavespeed models
+wavespeed models --json
 ```
 
-```json
-{
-  "source": "/path/to/.wavespeedrc.json",
-  "models": [
-    {
-      "id": "seedream-v4",
-      "provider": "wavespeed",
-      "apiBaseUrl": "https://api.wavespeed.ai",
-      "modelName": "bytedance/seedream-v4",
-      "apiKeyEnv": "WAVESPEED_API_KEY",
-      "isDefaultGlobal": true,
-      "defaultForCommands": ["generate", "edit"]
-    }
-  ]
-}
+Text output includes:
+
+- Configured local aliases from `.wavespeedrc*` / `wavespeed.config.*`
+- Built-in registry entries
+- Live API models fetched from Wavespeed when `WAVESPEED_API_KEY` is set
+- Model type and price metadata when available
+
+JSON output is best for agentic callers and scripts:
+
+```bash
+wavespeed models --json
 ```
 
-If no config file is present:
-- Listing shows a single built-in Seedream V4 model as the global default.
+The MCP `list_models` tool provides the same discovery path for agents and should be preferred when using the MCP server.
 
 ## Error Handling and Exit Codes
 
@@ -422,7 +450,7 @@ The CLI validates inputs and configuration and returns:
 Typical messages include guidance such as:
 
 - Unknown model:
-  - "Unknown model 'X'. Use --list-models to see available models."
+  - "Unknown model 'X'. Use `wavespeed models` to see available models."
 - Invalid config defaults:
   - "defaults.globalModel 'X' does not exist in models"
 - Missing secrets:
@@ -490,7 +518,7 @@ bun run src/index.ts generate --prompt "test"
 ```
 
 **"Unknown model 'X'"**
-- Check your config file with `wavespeed --list-models`
+- Check your config file and live model catalog with `wavespeed models`
 - Ensure the model ID matches exactly (case-sensitive)
 
 **"Invalid size format"**
@@ -504,19 +532,15 @@ bun run src/index.ts generate --prompt "test"
 
 ## API Documentation
 
-For detailed API specifications, see:
+For current model-specific API details, use:
 
-- [Bytedance Seedream V4 (Generate)](https://wavespeed.ai/docs/docs-api/bytedance/bytedance-seedream-v4)
-- [Bytedance Seedream V4 Edit](https://wavespeed.ai/docs/docs-api/bytedance/bytedance-seedream-v4-edit)
-- [Bytedance Seedream V4 Sequential](https://wavespeed.ai/docs/docs-api/bytedance/bytedance-seedream-v4-sequential)
-- [Bytedance Seedream V4 Edit Sequential](https://wavespeed.ai/docs/docs-api/bytedance/bytedance-seedream-v4-edit-sequential)
+- [Wavespeed API documentation](https://wavespeed.ai/docs)
+- [Wavespeed model catalog](https://wavespeed.ai/models)
+- `wavespeed models` or MCP `list_models` for runtime model ids, types, and prices
 
 ## Pricing
 
-From the API documentation:
-
-- Standard generation: $0.027 per image
-- Sequential generation: $0.027 × `max_images`
+Pricing is model-specific and changes as Wavespeed adds models. Use `wavespeed models`, MCP `list_models`, or the Wavespeed model pages for current pricing before running large batches.
 
 ## Contributing
 

@@ -1,3 +1,5 @@
+import { lookup } from "node:dns/promises";
+import net from "node:net";
 import { ModelCache } from "../cache";
 import { inferApiModelType } from "../utils/model-routing.ts";
 import { ConfigError } from "./load";
@@ -13,6 +15,7 @@ export interface ApiModelCache {
 }
 
 const BUILTIN_MODEL_ID = "seedream-v4";
+const WAVESPEED_HOST_SUFFIX = ".wavespeed.ai";
 const CANONICAL_MODEL_SUFFIXES = [
   "/edit",
   "/sequential",
@@ -37,6 +40,209 @@ const BUILTIN_MODEL_BASE: Omit<ResolvedModel, "apiKey"> = {
   isFromConfig: false,
   submitMode: "base",
 };
+
+function envFlag(name: string): boolean {
+  return /^(1|true|yes|on)$/i.test(process.env[name] ?? "");
+}
+
+function normalizeHostnameForPolicy(hostname: string): string {
+  return hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.+$/g, "");
+}
+
+function isKnownWavespeedHost(hostname: string): boolean {
+  const normalized = normalizeHostnameForPolicy(hostname);
+  return normalized === "wavespeed.ai" || normalized.endsWith(WAVESPEED_HOST_SUFFIX);
+}
+
+function isPrivateIPv4(address: string): boolean {
+  const parts = address.split(".").map((part) => Number(part));
+  if (
+    parts.length !== 4 ||
+    parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)
+  ) {
+    return true;
+  }
+
+  const [a, b] = parts;
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 192 && b === 0) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    a >= 224
+  );
+}
+
+function extractIPv4FromMappedIPv6(address: string): string | undefined {
+  const match = /^::ffff:(?:(?:0:){0,2})?(.+)$/i.exec(address);
+  if (!match) return undefined;
+
+  const embedded = match[1];
+  if (net.isIP(embedded) === 4) {
+    return embedded;
+  }
+
+  const hextets = embedded.split(":");
+  if (hextets.length !== 2) {
+    return undefined;
+  }
+
+  const high = Number.parseInt(hextets[0], 16);
+  const low = Number.parseInt(hextets[1], 16);
+  if (
+    !Number.isInteger(high) ||
+    !Number.isInteger(low) ||
+    high < 0 ||
+    high > 0xffff ||
+    low < 0 ||
+    low > 0xffff
+  ) {
+    return undefined;
+  }
+
+  return `${(high >> 8) & 0xff}.${high & 0xff}.${(low >> 8) & 0xff}.${low & 0xff}`;
+}
+
+function isPrivateIPv6(address: string): boolean {
+  const normalized = address.toLowerCase();
+  const mappedIPv4 = extractIPv4FromMappedIPv6(normalized);
+  if (mappedIPv4) {
+    return isPrivateIPv4(mappedIPv4);
+  }
+
+  return (
+    normalized === "::" ||
+    normalized === "::1" ||
+    normalized.startsWith("fc") ||
+    normalized.startsWith("fd") ||
+    normalized.startsWith("fe8") ||
+    normalized.startsWith("fe9") ||
+    normalized.startsWith("fea") ||
+    normalized.startsWith("feb") ||
+    normalized.startsWith("2001:db8:")
+  );
+}
+
+function isLocalOrPrivateHost(hostname: string): boolean {
+  const normalized = normalizeHostnameForPolicy(hostname);
+  if (normalized === "localhost" || normalized.endsWith(".localhost")) {
+    return true;
+  }
+
+  const family = net.isIP(normalized);
+  if (family === 4) return isPrivateIPv4(normalized);
+  if (family === 6) return isPrivateIPv6(normalized);
+  return false;
+}
+
+async function resolvedHostIsLocalOrPrivate(hostname: string): Promise<boolean> {
+  const normalized = normalizeHostnameForPolicy(hostname);
+  if (isLocalOrPrivateHost(normalized)) {
+    return true;
+  }
+
+  const addresses = await lookup(normalized, { all: true, verbatim: true });
+  return addresses.some((entry) => {
+    const family = net.isIP(entry.address);
+    if (family === 4) return isPrivateIPv4(entry.address);
+    if (family === 6) return isPrivateIPv6(entry.address);
+    return true;
+  });
+}
+
+async function validateResolvedApiBaseUrlHost(modelId: string, apiBaseUrl: string): Promise<void> {
+  if (envFlag("WAVESPEED_ALLOW_INSECURE_API_BASE_URL")) {
+    return;
+  }
+
+  const parsed = new URL(apiBaseUrl);
+  if (isKnownWavespeedHost(parsed.hostname)) {
+    return;
+  }
+
+  let resolvesPrivate = false;
+  try {
+    resolvesPrivate = await resolvedHostIsLocalOrPrivate(parsed.hostname);
+  } catch (err) {
+    throw new ConfigError(
+      `Model '${modelId}' apiBaseUrl host '${parsed.hostname}' could not be resolved for private-network validation: ${(err as Error).message}`,
+      3,
+    );
+  }
+
+  if (resolvesPrivate) {
+    throw new ConfigError(
+      `Model '${modelId}' apiBaseUrl must not resolve to localhost/private networks. Set WAVESPEED_ALLOW_INSECURE_API_BASE_URL=1 only for trusted local testing.`,
+      3,
+    );
+  }
+}
+
+function validateApiBaseUrl(
+  modelId: string,
+  provider: ResolvedModel["provider"],
+  apiBaseUrl: string,
+  apiKeyEnv: string,
+): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(apiBaseUrl);
+  } catch {
+    throw new ConfigError(`Model '${modelId}' has invalid apiBaseUrl '${apiBaseUrl}'.`, 3);
+  }
+
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new ConfigError(`Model '${modelId}' apiBaseUrl must use http(s).`, 3);
+  }
+
+  const allowInsecure = envFlag("WAVESPEED_ALLOW_INSECURE_API_BASE_URL");
+  if (parsed.protocol !== "https:" && !allowInsecure) {
+    throw new ConfigError(
+      `Model '${modelId}' apiBaseUrl must use HTTPS. Set WAVESPEED_ALLOW_INSECURE_API_BASE_URL=1 only for trusted local testing.`,
+      3,
+    );
+  }
+
+  if (isLocalOrPrivateHost(parsed.hostname) && !allowInsecure) {
+    throw new ConfigError(
+      `Model '${modelId}' apiBaseUrl must not point to localhost/private networks. Set WAVESPEED_ALLOW_INSECURE_API_BASE_URL=1 only for trusted local testing.`,
+      3,
+    );
+  }
+
+  if (parsed.username || parsed.password) {
+    throw new ConfigError(`Model '${modelId}' apiBaseUrl must not include credentials.`, 3);
+  }
+
+  if (parsed.search || parsed.hash) {
+    throw new ConfigError(`Model '${modelId}' apiBaseUrl must not include query or fragment.`, 3);
+  }
+
+  const isWavespeedHost = isKnownWavespeedHost(parsed.hostname);
+  const allowCustom = envFlag("WAVESPEED_ALLOW_CUSTOM_API_BASE_URL");
+  if (
+    (envFlag("WAVESPEED_MCP_MODE") ||
+      provider === "wavespeed" ||
+      apiKeyEnv === "WAVESPEED_API_KEY") &&
+    !isWavespeedHost &&
+    !allowCustom
+  ) {
+    throw new ConfigError(
+      `Model '${modelId}' would send ${apiKeyEnv} to non-Wavespeed host '${parsed.hostname}'. Set WAVESPEED_ALLOW_CUSTOM_API_BASE_URL=1 only for trusted custom gateways.`,
+      3,
+    );
+  }
+
+  return parsed.toString().replace(/\/+$/, "");
+}
 
 /**
  * Commands that submit model-backed generation tasks.
@@ -136,7 +342,9 @@ export async function resolveModelForRequest(
     // through config, registry, or built-in defaults when cache reads fail.
   }
 
-  return resolveModel(commandName, cliModelFlag, config, apiCache);
+  const model = resolveModel(commandName, cliModelFlag, config, apiCache);
+  await validateResolvedApiBaseUrlHost(model.id, model.apiBaseUrl);
+  return model;
 }
 
 /**
@@ -155,7 +363,7 @@ export function resolveModel(
       cliModelFlag,
       config,
       apiCache,
-      `Unknown model '${cliModelFlag}'. Use --list-models to see available models.`,
+      `Unknown model '${cliModelFlag}'. Use 'wavespeed models' to see available models.`,
     );
   }
 
@@ -338,6 +546,8 @@ function resolveFromConfigModel(
       throw new ConfigError(`Model '${id}' is missing apiBaseUrl.`, 3);
     }
   }
+
+  apiBaseUrl = validateApiBaseUrl(id, provider as ResolvedModel["provider"], apiBaseUrl, apiKeyEnv);
 
   const type = model.type ?? "image";
   const requestDefaults = model.requestDefaults ?? {};

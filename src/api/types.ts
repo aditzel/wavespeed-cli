@@ -1,4 +1,4 @@
-export type JobStatus = "created" | "processing" | "completed" | "failed";
+export type JobStatus = "created" | "processing" | "completed" | "succeeded" | "failed";
 
 export interface Timings {
   inference?: number;
@@ -52,8 +52,17 @@ export interface ModelsListResponse {
   data: ModelSchema[];
 }
 
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]+$/;
+
+function encodeRequestId(id: string): string {
+  if (!id || !REQUEST_ID_PATTERN.test(id)) {
+    throw new Error("Invalid prediction request id");
+  }
+  return encodeURIComponent(id);
+}
+
 export const BASE_URL = "https://api.wavespeed.ai";
 export const endpoints = {
-  result: (id: string) => `/api/v3/predictions/${id}/result`,
+  result: (id: string) => `/api/v3/predictions/${encodeRequestId(id)}/result`,
   models: "/api/v3/models",
 };
