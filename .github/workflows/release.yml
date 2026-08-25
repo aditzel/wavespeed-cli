@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: read
     steps:
@@ -43,7 +43,7 @@ jobs:
         run: ./dist/index.js --help
 
   release:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     needs: test
     permissions:
       contents: write
