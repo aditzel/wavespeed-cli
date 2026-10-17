@@ -1,14 +1,20 @@
 name: Test and Build
 
 on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# Keep automatic checks until the protected Janus pipelines are commissioned.
+# Review fork workflow changes before approving: routing is not a runner access boundary.
 jobs:
   test:
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || fromJSON('["self-hosted","Linux","X64"]') }}
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
@@ -40,7 +46,7 @@ jobs:
           ./dist/index.js edit-sequential --help
 
   validate-implementation:
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-24.04' || fromJSON('["self-hosted","Linux","X64"]') }}
     needs: test
 
     steps:
