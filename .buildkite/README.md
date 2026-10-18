@@ -47,9 +47,10 @@ sandbox.
 ## Hosted fallback and original workflows
 
 Pushes to `main`/`develop` and pull requests targeting `main` retain their original
-triggers, commands and `test` → `validate-implementation` dependency. Fork PRs and
-explicit `workflow_dispatch` runs use hosted Ubuntu 24.04; trusted automatic runs
-retain their existing self-hosted routing until native commissioning is complete.
+triggers, commands and `test` → `validate-implementation` dependency. All ordinary
+Actions events temporarily use hosted Ubuntu 24.04 because the previous self-hosted
+runners are retired. Fork PRs and explicit `workflow_dispatch` runs remain hosted
+after the separate native cutover.
 The ordinary workflow grants only `contents: read`, and both checkouts disable
 credential persistence. Fork routing is not a runner-access security boundary:
 review workflow changes before approving outside-contributor runs, and enforce
