@@ -1,0 +1,24 @@
+# Reference only: the image-owned Janus manifest is the trusted pipeline source.
+# Pipeline: wavespeed-cli-ci; bootstrap command: janus-ci bootstrap.
+# Provider triggers: push main/develop and pull requests targeting main.
+# Fork PRs and manual rollback stay on hosted Ubuntu until a separate untrusted pool exists.
+# Both jobs use Bun 1.3.14 and the image's Node 22 baseline.
+steps:
+  - label: ":bun: Test and build"
+    key: test
+    command: janus-ci test
+    agents:
+      queue: janus-linux
+    timeout_in_minutes: 360
+    env:
+      CI: "true"
+
+  - label: ":white_check_mark: Validate implementation"
+    key: validate-implementation
+    command: janus-ci validate-implementation
+    depends_on: test
+    agents:
+      queue: janus-linux
+    timeout_in_minutes: 360
+    env:
+      CI: "true"
