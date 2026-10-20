@@ -139,3 +139,44 @@ route can publish, so rollback must be deliberate.
 Pinned upstream behavior: [engine](https://github.com/semantic-release/semantic-release/blob/v25.0.5/index.js),
 [dry-run phases](https://github.com/semantic-release/semantic-release/blob/v25.0.5/lib/definitions/plugins.js),
 and [Git prepare push](https://github.com/semantic-release/git/blob/v10.0.1/lib/prepare.js).
+
+## Remaining Release tests
+
+The standalone `scripts/release/request-tests.mjs` requests the original four
+Release test commands from `wavespeed-cli-release-tests` when no versioned
+release build takes that obligation. It preserves main pushes (including
+`chore(release):` commits), manual branches and manual tags. Requests contain
+only repository/workflow/run/attempt/event/commit/ref identity. The fixed
+pipeline receives no environment grants, requested version or publishing
+authority. Inventory plus an independent post-create read prevents blind
+creation retries; an ambiguous POST must be inspected before retrying.
+
+Configure a pipeline-scoped `BUILDKITE_WAVESPEED_TEST_WRITE_TOKEN` for dispatch,
+`BUILDKITE_WAVESPEED_TEST_READ_TOKEN` for completion, the existing private-helper
+reader, and the independently reviewed `JANUS_WAVESPEED_TEST_POLICY`. The
+protected image must approve the exact workflow and standalone dispatcher Git
+blobs. Repository-controlled configuration cannot supply those trusted pins.
+Keep `JANUS_WAVESPEED_TEST_MODE` unset until native commissioning is ready.
+
+`verify` dispatches alongside the existing test. `janus` skips the old test only
+when `JANUS_WAVESPEED_RELEASE_MODE` is also `verify` or `publish`; planned releases
+already test inside their versioned pipeline. Manual recovery retains its old
+test and publishing dependency until the recovery artifact path is implemented.
+Neither flag activates that unfinished recovery migration.
+
+The read-only `verify-janus-test` callback handles terminal test statuses. It
+checks the fixed provider API, original workflow attempt, newest matching build,
+passing retry chain, Janus queue and protected result index, and rechecks after
+the last download. Failure, cancellation, a missing result, changed policy or a
+newer failed attempt cannot fall back to an older green build. The callback
+does not check out or execute the tested repository code.
+
+GitHub runs status workflows from the default branch, so callback source and
+tested source are authenticated separately. This preserves manual branch/tag
+and older-main test identities. A status is only a routing hint and a successful
+dispatch is not a successful test. Before cutover, verify actual callback
+delivery for every event and require the native
+`buildkite/wavespeed-cli-release-tests` check. The five-minute hosted adapters
+do not replace the 360-minute Janus execution allowance and ten-minute protected
+overhead. Queue, cancellation and required-check behavior still need native
+evidence. See [GitHub's status-event semantics](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#status).

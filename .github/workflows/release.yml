@@ -104,6 +104,85 @@ jobs:
           BUILDKITE_RELEASE_WRITE_TOKEN: ${{ secrets.BUILDKITE_WAVESPEED_RELEASE_WRITE_TOKEN }}
         run: node scripts/release/request-janus.mjs
 
+  request-janus-test:
+    needs: plan-release
+    if: >-
+      !cancelled() && github.repository == 'aditzel/wavespeed-cli' &&
+      contains(fromJSON('["verify","janus"]'), vars.JANUS_WAVESPEED_TEST_MODE) &&
+      contains(fromJSON('["push","workflow_dispatch"]'), github.event_name) &&
+      needs.plan-release.outputs.decision != 'release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    concurrency:
+      group: wavespeed-test-request-${{ github.run_id }}-${{ github.run_attempt }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "22"
+      - name: Request original Release tests on Janus
+        env:
+          JANUS_WAVESPEED_TEST_MODE: ${{ vars.JANUS_WAVESPEED_TEST_MODE }}
+          BUILDKITE_TEST_WRITE_TOKEN: ${{ secrets.BUILDKITE_WAVESPEED_TEST_WRITE_TOKEN }}
+        run: node scripts/release/request-tests.mjs
+
+  verify-janus-test:
+    if: >-
+      github.repository == 'aditzel/wavespeed-cli' &&
+      contains(fromJSON('["verify","janus"]'), vars.JANUS_WAVESPEED_TEST_MODE) &&
+      github.event_name == 'status' &&
+      contains(fromJSON('["success","failure","error"]'), github.event.state) &&
+      github.event.context == 'buildkite/wavespeed-cli-release-tests'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout reviewed test verifier
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          repository: MiraiForge/devops
+          ref: 3ec5499e8ffe5743e64f8dbed7597ce0034044bd
+          token: ${{ secrets.JANUS_HELPERS_READ_TOKEN }}
+          path: .janus-tools
+          persist-credentials: false
+      - name: Authenticate original test result and current callback
+        env:
+          JANUS_WAVESPEED_TEST_MODE: ${{ vars.JANUS_WAVESPEED_TEST_MODE }}
+          POLICY_JSON: ${{ vars.JANUS_WAVESPEED_TEST_POLICY }}
+          GITHUB_READER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUILDKITE_READER_TOKEN: ${{ secrets.BUILDKITE_WAVESPEED_TEST_READ_TOKEN }}
+        run: |
+          python3 -I -B <<'PYTHON'
+          import os
+          from pathlib import Path
+          import subprocess
+          import tempfile
+          os.umask(0o077)
+          with tempfile.TemporaryDirectory(prefix="wavespeed-test-result-", dir=os.environ["RUNNER_TEMP"]) as state:
+              root = Path(state)
+              for filename, key in [("policy.json", "POLICY_JSON"), ("github-token", "GITHUB_READER_TOKEN"),
+                                    ("buildkite-token", "BUILDKITE_READER_TOKEN")]:
+                  value = os.environ.pop(key)
+                  if not value:
+                      raise SystemExit("Missing protected test configuration")
+                  (root / filename).write_text(value)
+              helper = Path(".janus-tools/infrastructure/buildkite-publishers/wavespeed-tests.py").resolve()
+              subprocess.run(["python3", "-I", "-B", str(helper), "--policy", str(root / "policy.json"),
+                              "--github-token-file", str(root / "github-token"),
+                              "--buildkite-token-file", str(root / "buildkite-token"),
+                              "--output", str(root / "test-result.json")], check=True)
+          PYTHON
+
   verify-release:
     if: >-
       github.repository == 'aditzel/wavespeed-cli' &&
@@ -249,7 +328,12 @@ jobs:
 
   test:
     needs: plan-release
-    if: ${{ !cancelled() && github.event_name != 'status' && needs.plan-release.outputs.decision != 'release' }}
+    # Recovery retains its existing prerequisite until the independent recovery
+    # publisher is commissioned. Cutover also requires the versioned release route.
+    if: >-
+      !cancelled() && github.event_name != 'status' && needs.plan-release.outputs.decision != 'release' &&
+      (vars.JANUS_WAVESPEED_TEST_MODE != 'janus' ||
+       !contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) || inputs.publish_current_version)
     runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: read
