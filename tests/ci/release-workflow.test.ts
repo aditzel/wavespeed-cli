@@ -9,7 +9,7 @@ const jobs = workflow.jobs;
 
 // Evaluate the actual expressions in this workflow for controlled boolean/string
 // fixtures. actionlint separately checks GitHub's syntax/context availability.
-function routes({ mode = "", event = "push", ref = "refs/heads/main", recovery = false,
+function routes({ mode = "", testMode = "", event = "push", ref = "refs/heads/main", recovery = false,
   message = "feat: change", decision = "", planResult = "skipped", testResult = "success", repo = "aditzel/wavespeed-cli",
   status = "success", context = "buildkite/wavespeed-cli-release-build", stale = false, canceled = false } = {}) {
   const github = { repository: repo, event_name: event, ref, sha: "a".repeat(40),
@@ -20,17 +20,17 @@ function routes({ mode = "", event = "push", ref = "refs/heads/main", recovery =
     const dependency = jobs[name].needs;
     if (dependency && !expression.includes("cancelled(") && needs[dependency].result !== "success") return false;
     return !!new Function("github", "vars", "inputs", "needs", "startsWith", "cancelled", "contains", "fromJSON",
-      `return (${expression});`)(github, { JANUS_WAVESPEED_RELEASE_MODE: mode },
+      `return (${expression});`)(github, { JANUS_WAVESPEED_RELEASE_MODE: mode, JANUS_WAVESPEED_TEST_MODE: testMode },
       { publish_current_version: recovery }, needs, (value: string, prefix: string) => value.startsWith(prefix), () => canceled, (items: string[], item: string) => items.includes(item), JSON.parse);
   };
-  return Object.fromEntries(["plan-release", "request-janus-release", "verify-release", "publish-release", "test", "release"]
+  return Object.fromEntries(["plan-release", "request-janus-release", "verify-release", "publish-release", "request-janus-test", "verify-janus-test", "test", "release"]
     .map((name) => [name, run(name)]));
 }
 
 describe("release workflow routing", () => {
   it("preserves legacy main publishing and non-main tests while verification is off", () => {
     expect(routes()).toEqual({ "plan-release": false, "request-janus-release": false,
-      "verify-release": false, "publish-release": false, test: true, release: true });
+      "verify-release": false, "publish-release": false, "request-janus-test": false, "verify-janus-test": false, test: true, release: true });
     expect(routes({ event: "workflow_dispatch", ref: "refs/heads/topic" }).release).toBe(false);
     expect(routes({ event: "workflow_dispatch", ref: "refs/heads/topic" }).test).toBe(true);
     expect(routes({ message: "chore(release): 1.4.0" }).release).toBe(false);
@@ -39,7 +39,7 @@ describe("release workflow routing", () => {
 
   it("routes a planned normal release to Janus verification without legacy publication", () => {
     expect(routes({ mode: "verify", decision: "release", planResult: "success" })).toEqual({
-      "plan-release": true, "request-janus-release": true, "verify-release": false, "publish-release": false, test: false, release: false,
+      "plan-release": true, "request-janus-release": true, "verify-release": false, "publish-release": false, "request-janus-test": false, "verify-janus-test": false, test: false, release: false,
     });
     expect(routes({ mode: "verify", event: "workflow_dispatch", decision: "release", planResult: "success" })
       ["request-janus-release"]).toBe(true);
@@ -51,13 +51,13 @@ describe("release workflow routing", () => {
     expect(routes({ mode: "verify", message: "chore(release): 1.4.0" }).test).toBe(true);
     expect(routes({ mode: "verify", event: "workflow_dispatch", ref: "refs/heads/topic" }).test).toBe(true);
     expect(routes({ mode: "verify", event: "workflow_dispatch", recovery: true })).toEqual({
-      "plan-release": false, "request-janus-release": false, "verify-release": false, "publish-release": false, test: true, release: true,
+      "plan-release": false, "request-janus-release": false, "verify-release": false, "publish-release": false, "request-janus-test": false, "verify-janus-test": false, test: true, release: true,
     });
   });
 
   it("completion statuses cannot enter legacy publishing or start another planner", () => {
     expect(routes({ mode: "verify", event: "status" })).toEqual({
-      "plan-release": false, "request-janus-release": false, "verify-release": true, "publish-release": false, test: false, release: false,
+      "plan-release": false, "request-janus-release": false, "verify-release": true, "publish-release": false, "request-janus-test": false, "verify-janus-test": false, test: false, release: false,
     });
     for (const change of [{ mode: "" }, { stale: true }, { context: "other" }, { status: "failure" },
       { repo: "outsider/fork" }]) {
@@ -89,7 +89,7 @@ describe("release workflow routing", () => {
   it("uses only the hosted publisher for successful status callbacks in publish mode", () => {
     expect(routes({ mode: "publish", event: "status" })).toEqual({
       "plan-release": false, "request-janus-release": false, "verify-release": false,
-      "publish-release": true, test: false, release: false,
+      "publish-release": true, "request-janus-test": false, "verify-janus-test": false, test: false, release: false,
     });
     const planned = routes({ mode: "publish", decision: "release", planResult: "success" });
     expect(planned["request-janus-release"]).toBe(true);
@@ -106,8 +106,52 @@ describe("release workflow routing", () => {
     expect(commands).not.toMatch(/bun run build|bun test|bun run release/);
   });
 
+  it("routes remaining test events to Janus only after both modes are configured", () => {
+    for (const change of [{ decision: "no-release", planResult: "success" }, { message: "chore(release): 1.4.0" },
+      { event: "workflow_dispatch", ref: "refs/heads/topic" }, { event: "workflow_dispatch", ref: "refs/tags/v1.3.5" },
+      { planResult: "failure" }]) {
+      const cutover = routes({ mode: "verify", testMode: "janus", ...change });
+      expect(cutover["request-janus-test"]).toBe(true);
+      expect(cutover.test).toBe(false);
+      expect(cutover.release).toBe(false);
+      expect(routes({ mode: "verify", testMode: "verify", ...change }).test).toBe(true);
+    }
+    expect(routes({ testMode: "janus" }).test).toBe(true);
+    expect(routes({ mode: "verify", testMode: "janus", decision: "release", planResult: "success" })["request-janus-test"]).toBe(false);
+    for (const change of [{ canceled: true }, { event: "status" }, { repo: "outsider/fork" }])
+      expect(routes({ mode: "verify", testMode: "janus", ...change })["request-janus-test"]).toBe(false);
+    const recovery = routes({ mode: "publish", testMode: "janus", event: "workflow_dispatch", recovery: true });
+    expect(recovery.test).toBe(true);
+    expect(recovery.release).toBe(true);
+    expect(recovery["request-janus-test"]).toBe(true);
+  });
+
+  it("verifies terminal test statuses independently of the callback commit without publishing", () => {
+    for (const status of ["success", "failure", "error"]) {
+      const result = routes({ mode: "publish", testMode: "janus", event: "status", stale: true,
+        context: "buildkite/wavespeed-cli-release-tests", status });
+      expect(result["verify-janus-test"]).toBe(true);
+      expect(result["publish-release"]).toBe(false);
+      expect(result["request-janus-test"]).toBe(false);
+      expect(result.test).toBe(false);
+      expect(result.release).toBe(false);
+    }
+    const callback = jobs["verify-janus-test"];
+    expect(callback.permissions).toEqual({ contents: "read", actions: "read" });
+    expect(callback["runs-on"]).toBe("ubuntu-24.04");
+    expect(callback["timeout-minutes"]).toBe(5);
+    expect(callback.steps).toHaveLength(2);
+    expect(callback.steps[0].with.repository).toBe("MiraiForge/devops");
+    expect(callback.steps[0].with.ref).toBe("3ec5499e8ffe5743e64f8dbed7597ce0034044bd");
+    const commands = callback.steps.map((step: any) => step.run || "").join("\n");
+    expect(commands).toContain("wavespeed-tests.py");
+    expect(commands).not.toMatch(/bun install|bun test|npm publish|bun run release/);
+    expect(jobs["request-janus-test"].concurrency.group).toContain("github.run_id");
+    expect(jobs["request-janus-test"].permissions).toEqual({ contents: "read" });
+  });
+
   it("executes each CLI entry point under Node instead of silently doing nothing", () => {
-    for (const name of ["plan-release", "request-janus", "check-handoff", "publish-verified"]) {
+    for (const name of ["plan-release", "request-janus", "request-tests", "check-handoff", "publish-verified"]) {
       const result = spawnSync("node", [`scripts/release/${name}.mjs`], {
         cwd: root, env: { PATH: process.env.PATH }, encoding: "utf8", timeout: 15_000,
       });
