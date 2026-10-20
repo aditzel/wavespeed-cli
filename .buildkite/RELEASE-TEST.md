@@ -1,7 +1,8 @@
 # Release prerequisite on Janus
 
 This prepares the `test` prerequisite of `.github/workflows/release.yml`.
-Automatic Actions and the existing release workflow remain authoritative.
+Automatic Actions remain authoritative unless the
+[release verification mode](RELEASE-HANDOFF.md) is deliberately enabled.
 Nothing here publishes a package, creates a release, enables a provider pipeline,
 or gives repository code publication credentials.
 
@@ -57,4 +58,7 @@ serialization and replay behavior need implementation and live validation.
 Before cutover, prove provider access, protected image admission, exact immutable
 source, main/manual events, failure propagation, retries, cancellation, effective
 timeouts and rollback. No real npm or GitHub release is authorized as a test.
-Keep both Actions workflows unchanged until those requirements are satisfied.
+Keep the original routes available until those requirements are satisfied.
+The optional verification route covers a normal planned main release only;
+no-release, release-commit, non-main and tagged recovery tests remain on their
+existing route and receive no migration credit from this preparation.

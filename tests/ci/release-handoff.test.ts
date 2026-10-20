@@ -10,6 +10,7 @@ import {
 } from "../../scripts/release/release-plan.mjs";
 import { planRelease } from "../../scripts/release/plan-release.mjs";
 import { publisherOptions } from "../../scripts/release/publisher-options.mjs";
+import { checkHandoff } from "../../scripts/release/check-handoff.mjs";
 import { artifactManifest, sha256 } from "../../scripts/release/versioned-artifact.mjs";
 import plugins from "../../node_modules/semantic-release/lib/plugins/index.js";
 import getNextVersion from "../../node_modules/semantic-release/lib/get-next-version.js";
@@ -122,6 +123,26 @@ describe("semantic-release plan and artifact handoff", () => {
       path.join(cwd, "package.json"),
       fs.readFileSync(path.join(artifactDirectory, "package.json")),
     );
+
+  it("verifies the completion receipt in its active callback without running publication plugins", () => {
+    const receipt = { ...expected, repository: "aditzel/wavespeed-cli", version: "1.4.0", buildNumber: 7 };
+    const directory = path.join(cwd, "completion");
+    fs.mkdirSync(directory);
+    fs.cpSync(artifactDirectory, path.join(directory, "artifact"), { recursive: true });
+    fs.writeFileSync(path.join(directory, "release-plan.json"), planBytes);
+    const handoff = { schemaVersion: 1, receipt,
+      publisher: { jobId: 12, runId: 456, runAttempt: 2, commit: sourceCommit } };
+    fs.writeFileSync(path.join(directory, "handoff.json"), JSON.stringify(handoff));
+    const callbackEnv = { ...env, JANUS_WAVESPEED_RELEASE_MODE: "verify", GITHUB_EVENT_NAME: "status",
+      GITHUB_JOB: "publish-release", GITHUB_RUN_ID: "456" };
+    expect(checkHandoff(cwd, directory, callbackEnv).publicationEnabled).toBe(false);
+    expect(fs.existsSync(path.join(cwd, "dist"))).toBe(false);
+    expect(fs.readFileSync(path.join(cwd, "package.json")).equals(inputs.sourcePackage)).toBe(true);
+    expect(() => checkHandoff(cwd, directory, { ...callbackEnv, GITHUB_RUN_ATTEMPT: "3" })).toThrow("another publisher");
+    expect(() => checkHandoff(cwd, directory, { ...callbackEnv, JANUS_WAVESPEED_RELEASE_MODE: "" })).toThrow("context");
+    fs.appendFileSync(path.join(directory, "artifact/index.js"), "changed");
+    expect(() => checkHandoff(cwd, directory, callbackEnv)).toThrow();
+  });
 
   it("uses the exact engine decision and original plugin configuration in forced dry-run", async () => {
     let calls = 0;
