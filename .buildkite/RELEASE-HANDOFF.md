@@ -42,10 +42,13 @@ The protected Janus image must contain the matching reviewed producer policy,
 controller and scoped GitHub reader. Missing configuration fails closed.
 Do not place any publishing credentials in the Janus job.
 
-No-release decisions, release-commit pushes and manual non-main runs retain their
-existing test route. Explicit tagged-version recovery retains its existing tests
-and publisher, including when verification mode is enabled; never invoke it as a
-migration test. These paths still require migration and live parity evidence.
+No-release decisions, release-commit pushes and manual non-main runs use the
+separately prepared versionless test route when configured. Explicit tagged-version
+recovery has a separate [current-version recovery route](RECOVERY.md), with a
+read-only verification mode and a minimal hosted publisher. Unset recovery mode
+preserves the existing tests and publisher, including when release verification
+mode is enabled. These routes still need native commissioning and live parity
+evidence; do not publish a real package or release as a migration test.
 Status callbacks cannot enter the original test/publish route or start a planner.
 
 ## Hosted artifact publisher

@@ -9,7 +9,7 @@ const jobs = workflow.jobs;
 
 // Evaluate the actual expressions in this workflow for controlled boolean/string
 // fixtures. actionlint separately checks GitHub's syntax/context availability.
-function routes({ mode = "", testMode = "", event = "push", ref = "refs/heads/main", recovery = false,
+function routes({ mode = "", testMode = "", recoveryMode = "", all = false, event = "push", ref = "refs/heads/main", recovery = false,
   message = "feat: change", decision = "", planResult = "skipped", testResult = "success", repo = "aditzel/wavespeed-cli",
   status = "success", context = "buildkite/wavespeed-cli-release-build", stale = false, canceled = false } = {}) {
   const github = { repository: repo, event_name: event, ref, sha: "a".repeat(40),
@@ -20,10 +20,11 @@ function routes({ mode = "", testMode = "", event = "push", ref = "refs/heads/ma
     const dependency = jobs[name].needs;
     if (dependency && !expression.includes("cancelled(") && needs[dependency].result !== "success") return false;
     return !!new Function("github", "vars", "inputs", "needs", "startsWith", "cancelled", "contains", "fromJSON",
-      `return (${expression});`)(github, { JANUS_WAVESPEED_RELEASE_MODE: mode, JANUS_WAVESPEED_TEST_MODE: testMode },
+      `return (${expression});`)(github, { JANUS_WAVESPEED_RELEASE_MODE: mode, JANUS_WAVESPEED_TEST_MODE: testMode, JANUS_WAVESPEED_RECOVERY_MODE: recoveryMode },
       { publish_current_version: recovery }, needs, (value: string, prefix: string) => value.startsWith(prefix), () => canceled, (items: string[], item: string) => items.includes(item), JSON.parse);
   };
   return Object.fromEntries(["plan-release", "request-janus-release", "verify-release", "publish-release", "request-janus-test", "verify-janus-test", "test", "release"]
+    .concat(all ? ["request-recovery-verify", "request-recovery-publish", "verify-recovery", "publish-recovery"] : [])
     .map((name) => [name, run(name)]));
 }
 
@@ -150,8 +151,53 @@ describe("release workflow routing", () => {
     expect(jobs["request-janus-test"].permissions).toEqual({ contents: "read" });
   });
 
+  it("routes recovery modes to Janus while preventing legacy or verify-mode publication", () => {
+    for (const recoveryMode of ["verify", "publish"]) {
+      const result = routes({ mode: "verify", testMode: "janus", recoveryMode, all: true,
+        event: "workflow_dispatch", recovery: true });
+      expect(result[`request-recovery-${recoveryMode}`]).toBe(true);
+      expect(result[`request-recovery-${recoveryMode === "verify" ? "publish" : "verify"}`]).toBe(false);
+      expect(result.test).toBe(false);
+      expect(result.release).toBe(false);
+      expect(result["request-janus-test"]).toBe(false);
+      expect(result["publish-recovery"]).toBe(false);
+      for (const change of [{ ref: "refs/tags/v1.3.5" }, { ref: "refs/heads/topic" },
+        { recovery: false }, { event: "push" }, { repo: "outsider/fork" }, { mode: "" }]) {
+        expect(routes({ mode: "verify", recoveryMode, all: true, event: "workflow_dispatch", recovery: true,
+          ...change })[`request-recovery-${recoveryMode}`]).toBe(false);
+      }
+    }
+    const off = routes({ recoveryMode: "publish", all: true, event: "workflow_dispatch", recovery: true });
+    expect(off.test).toBe(true);
+    expect(off.release).toBe(true);
+  });
+
+  it("separates read-only verification from hosted recovery publication and authenticates before checkout", () => {
+    for (const mode of ["verify", "publish"]) {
+      const result = routes({ mode: "verify", recoveryMode: mode, all: true, event: "status", stale: true,
+        context: "buildkite/wavespeed-cli-recovery-build" });
+      expect(result[`${mode}-recovery`]).toBe(true);
+      expect(result.test).toBe(false);
+      expect(result.release).toBe(false);
+      expect(result["plan-release"]).toBe(false);
+      const job = jobs[`${mode}-recovery`];
+      expect(job.permissions).toEqual(mode === "verify" ? { contents: "read", actions: "read" } :
+        { contents: "write", actions: "read", "id-token": "write" });
+      expect(job["runs-on"]).toBe("ubuntu-24.04");
+      expect(job.concurrency).toEqual(jobs["publish-release"].concurrency);
+      expect(job.steps[0].with.repository).toBe("MiraiForge/devops");
+      expect(job.steps[0].with.ref).toBe("f0a8a66149da26af43918f8d88f4cad3e352a91c");
+      expect(job.steps[1].id).toBe("recovery");
+      expect(job.steps[2].with.ref).toBe("${{ steps.recovery.outputs.source }}");
+      expect(job.steps[2].with["fetch-depth"]).toBe(0);
+      const commands = job.steps.map((step: any) => step.run || "").join("\n");
+      expect(commands).not.toMatch(/bun install|bun run build|bun test|bun run release/);
+      expect(commands).toContain("recover-verified.mjs");
+    }
+  });
+
   it("executes each CLI entry point under Node instead of silently doing nothing", () => {
-    for (const name of ["plan-release", "request-janus", "request-tests", "check-handoff", "publish-verified"]) {
+    for (const name of ["plan-release", "request-janus", "request-tests", "request-recovery", "recover-verified", "check-handoff", "publish-verified"]) {
       const result = spawnSync("node", [`scripts/release/${name}.mjs`], {
         cwd: root, env: { PATH: process.env.PATH }, encoding: "utf8", timeout: 15_000,
       });
