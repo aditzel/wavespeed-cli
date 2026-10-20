@@ -10,7 +10,8 @@ import {
 } from "../../scripts/release/release-plan.mjs";
 import { planRelease } from "../../scripts/release/plan-release.mjs";
 import { publisherOptions } from "../../scripts/release/publisher-options.mjs";
-import { checkHandoff } from "../../scripts/release/check-handoff.mjs";
+import { checkHandoff, readCompletion } from "../../scripts/release/check-handoff.mjs";
+import { publishVerified, completionReader } from "../../scripts/release/publish-verified.mjs";
 import { artifactManifest, sha256 } from "../../scripts/release/versioned-artifact.mjs";
 import plugins from "../../node_modules/semantic-release/lib/plugins/index.js";
 import getNextVersion from "../../node_modules/semantic-release/lib/get-next-version.js";
@@ -131,10 +132,10 @@ describe("semantic-release plan and artifact handoff", () => {
     fs.cpSync(artifactDirectory, path.join(directory, "artifact"), { recursive: true });
     fs.writeFileSync(path.join(directory, "release-plan.json"), planBytes);
     const handoff = { schemaVersion: 1, receipt,
-      publisher: { jobId: 12, runId: 456, runAttempt: 2, commit: sourceCommit } };
+      publisher: { jobId: 12, runId: 456, runAttempt: 2, commit: sourceCommit, jobName: "verify-release", mode: "verify" } };
     fs.writeFileSync(path.join(directory, "handoff.json"), JSON.stringify(handoff));
     const callbackEnv = { ...env, JANUS_WAVESPEED_RELEASE_MODE: "verify", GITHUB_EVENT_NAME: "status",
-      GITHUB_JOB: "publish-release", GITHUB_RUN_ID: "456" };
+      GITHUB_JOB: "verify-release", GITHUB_RUN_ID: "456" };
     expect(checkHandoff(cwd, directory, callbackEnv).publicationEnabled).toBe(false);
     expect(fs.existsSync(path.join(cwd, "dist"))).toBe(false);
     expect(fs.readFileSync(path.join(cwd, "package.json")).equals(inputs.sourcePackage)).toBe(true);
@@ -162,6 +163,139 @@ describe("semantic-release plan and artifact handoff", () => {
     expect(calls).toBe(1);
     expect(planned).toEqual(plan);
     expect(fs.readFileSync(path.join(cwd, "package.json")).equals(inputs.sourcePackage)).toBe(true);
+  });
+
+  function publicationFixture() {
+    const callbackEnv = { ...env, JANUS_WAVESPEED_RELEASE_MODE: "publish", GITHUB_EVENT_NAME: "status",
+      GITHUB_JOB: "publish-release", GITHUB_RUN_ID: "456" };
+    const handoff = { schemaVersion: 1,
+      receipt: { ...expected, repository: "aditzel/wavespeed-cli", version: "1.4.0", buildNumber: 7 },
+      publisher: { jobId: 12, runId: 456, runAttempt: 2, commit: sourceCommit, jobName: "publish-release", mode: "publish" } };
+    const directory = path.join(cwd, "completion");
+    const write = (target: string) => {
+      fs.mkdirSync(target);
+      fs.cpSync(artifactDirectory, path.join(target, "artifact"), { recursive: true });
+      fs.writeFileSync(path.join(target, "release-plan.json"), planBytes);
+      fs.writeFileSync(path.join(target, "handoff.json"), JSON.stringify(handoff));
+    };
+    write(directory);
+    const authenticate = async () => readCompletion(directory, callbackEnv, "publish");
+    const engine = async (value: any, execution: any) => {
+      expect(execution.cwd).toBe(cwd);
+      expect(value.dryRun).toBe(false);
+      expect(value.ci).toBe(true);
+      const ctx = { ...context(), options: value, branch: { name: "main", type: "release" },
+        branches: [{ name: "main", type: "release" }] };
+      await value.plugins[0].verifyConditions({}, ctx);
+      await value.plugins[0].verifyRelease({}, ctx);
+      bump(); // Only local fixture metadata; no npm/git/GitHub publish plugin runs.
+      await value.plugins.find((item: any) => item.prepare).prepare({}, ctx);
+      return { ...result(), releases: [
+        { ...result().nextRelease, pluginName: "@semantic-release/npm", channel: "latest",
+          url: "https://www.npmjs.com/package/wavespeed-cli/v/1.4.0" },
+        { ...result().nextRelease, pluginName: "@semantic-release/github", id: 123,
+          url: "https://github.com/aditzel/wavespeed-cli/releases/tag/v1.4.0" },
+      ] };
+    };
+    return { env: callbackEnv, handoff, directory, write, authenticate, engine };
+  }
+
+  it("passes the artifact adapter to the publisher engine and reauthenticates at every mutation gate", async () => {
+    const fixture = publicationFixture();
+    let reads = 0;
+    const published = await publishVerified({ cwd, ...fixture, readGit,
+      authenticate: async () => { reads++;return fixture.authenticate(); } });
+    expect(reads).toBe(4);
+    expect(published).toEqual({ sourceCommit, version: "1.4.0", gitTag: "v1.4.0", buildNumber: 7, published: true });
+    expect(fs.readFileSync(path.join(cwd, "dist/index.js")).equals(bundle)).toBe(true);
+  });
+
+  it("cannot enter the publisher from verification mode or a stale checkout", async () => {
+    const fixture = publicationFixture();
+    let reads = 0;
+    const authenticate = async () => { reads++;return fixture.authenticate(); };
+    await expect(publishVerified({ cwd, ...fixture, env: { ...fixture.env, JANUS_WAVESPEED_RELEASE_MODE: "verify" },
+      readGit, authenticate })).rejects.toThrow("publisher context");
+    await expect(publishVerified({ cwd, ...fixture, readGit: () => "stale", authenticate })).rejects.toThrow("stale or incomplete");
+    expect(reads).toBe(0);
+  });
+
+  for (const changeAt of [2, 3, 4]) {
+    it(`rejects a replaced handoff at authentication ${changeAt} before copying the bundle`, async () => {
+      const fixture = publicationFixture();
+      let reads = 0;
+      await expect(publishVerified({ cwd, ...fixture, readGit, authenticate: async () => {
+        const fresh = await fixture.authenticate();
+        if (++reads === changeAt) fresh.handoff.receipt.buildNumber++;
+        return fresh;
+      } })).rejects.toThrow("handoff changed");
+      expect(fs.existsSync(path.join(cwd, "dist/index.js"))).toBe(false);
+    });
+  }
+
+  it("rechecks local artifact bytes after awaiting provider authentication", async () => {
+    const fixture = publicationFixture();
+    let reads = 0;
+    await expect(publishVerified({ cwd, ...fixture, readGit, authenticate: async () => {
+      const fresh = await fixture.authenticate();
+      if (++reads === 4) fs.appendFileSync(path.join(fixture.directory, "artifact/index.js"), "tampered");
+      return fresh;
+    } })).rejects.toThrow();
+    expect(fs.existsSync(path.join(cwd, "dist/index.js"))).toBe(false);
+  });
+
+  it("does not report a no-op or incomplete plugin result as a completed release", async () => {
+    const fixture = publicationFixture();
+    await expect(publishVerified({ cwd, ...fixture, readGit, engine: async () => false })).rejects.toThrow("every fresh handoff gate");
+    await expect(publishVerified({ cwd, ...fixture, readGit, engine: async (...args: any[]) => {
+      const value = await fixture.engine(args[0], args[1]);
+      value.releases = [{ pluginName: "@semantic-release/npm" }];
+      return value;
+    } })).rejects.toThrow("npm and GitHub");
+  });
+
+  it("rejects a skipped publisher even when the engine includes its plugin name", async () => {
+    const fixture = publicationFixture();
+    await expect(publishVerified({ cwd, ...fixture, readGit, engine: async (...args: any[]) => {
+      const value = await fixture.engine(args[0], args[1]);
+      // The pinned dispatcher still attaches pluginName when publish returns false.
+      value.releases = [{ pluginName: "@semantic-release/npm" }, { pluginName: "@semantic-release/github" }] as any;
+      return value;
+    } })).rejects.toThrow("npm and GitHub");
+  });
+
+  it("rejects channel addition and accidental engine dry-run before any mutation", async () => {
+    for (const change of [{ options: { dryRun: true } }, { branches: [{ name: "main" }, { name: "next" }] },
+      { branch: { name: "main", type: "maintenance" } }]) {
+      const value = publisherOptions({ cwd, planBytes, artifactDirectory, expected, revalidate: async () => {} });
+      expect(() => value.plugins[0].verifyConditions({}, {
+        ...context(), options: { dryRun: false }, branch: { name: "main", type: "release" },
+        branches: [{ name: "main" }], ...change,
+      })).toThrow("live release configuration");
+    }
+  });
+
+  it("runs each protected refresh with bounded arguments and no publishing tokens in its environment", async () => {
+    const fixture = publicationFixture();
+    const calls: any[] = [];
+    const reader = completionReader({ cwd, env: { ...fixture.env, GITHUB_TOKEN: "private-test-placeholder",
+      GH_TOKEN: "private-test-placeholder", BUILDKITE_READER_TOKEN: "private-test-placeholder" },
+      policy: "/private/policy", githubToken: "/private/github", buildkiteToken: "/private/buildkite", state: cwd,
+      run: (command: string, args: string[], options: any) => {
+        calls.push({ command, args, options });
+        fixture.write(args.at(-1)!);
+      } });
+    await reader();await reader();
+    expect(calls).toHaveLength(2);
+    expect(calls[0].args.at(-1)).not.toBe(calls[1].args.at(-1));
+    for (const call of calls) {
+      expect(call.command).toBe("python3");
+      expect(call.args.slice(0, 3)).toEqual(["-I", "-B", path.join(cwd, ".janus-tools/infrastructure/buildkite-publishers/wavespeed-release.py")]);
+      expect(call.options.timeout).toBe(180_000);
+      expect(call.options.env.GITHUB_TOKEN).toBeUndefined();
+      expect(call.options.env.GH_TOKEN).toBeUndefined();
+      expect(call.options.env.BUILDKITE_READER_TOKEN).toBeUndefined();
+    }
   });
   it("represents no-release without inventing a version", async () => {
     const planned = await planRelease({
@@ -477,10 +611,16 @@ describe("semantic-release plan and artifact handoff", () => {
     });
   }
 
-  for (const dryRun of [true, false]) {
-    it(`runs through the pinned engine plugin dispatcher with dryRun=${dryRun}`, async () => {
-      const { value } = gates();
+  for (const mode of ["dry-run", "unwired", "refresh", "reject-refresh"] as const) {
+    it(`runs through the pinned engine plugin dispatcher with ${mode}`, async () => {
+      const dryRun = mode === "dry-run";
       const events: string[] = [];
+      const revalidate = mode === "refresh" || mode === "reject-refresh" ? async (phase: string) => {
+        await Promise.resolve();
+        events.push(`refresh:${phase}`);
+        if (mode === "reject-refresh" && phase === "prepare") throw new Error("Provider attempt superseded");
+      } : undefined;
+      const value = publisherOptions({ cwd, planBytes, artifactDirectory, expected, revalidate });
       const shim = path.join(cwd, "bin");
       fs.mkdirSync(shim);
       fs.writeFileSync(path.join(shim, "git"), `#!/bin/sh\nprintf '%s\\n' '${sourceCommit}'\n`, {
@@ -530,6 +670,8 @@ describe("semantic-release plan and artifact handoff", () => {
         });
         const runtime: any = {
           ...context(),
+          branch: { name: "main", type: "release" },
+          branches: [{ name: "main", type: "release" }],
           options: { plugins: adapted, dryRun },
           env: {},
           logger,
@@ -537,11 +679,22 @@ describe("semantic-release plan and artifact handoff", () => {
           stderr: process.stderr,
         };
         const pipeline = await plugins(runtime, {});
+        await pipeline.verifyConditions(runtime);
         await pipeline.verifyRelease(runtime);
+        if (mode === "reject-refresh") {
+          await expect(pipeline.prepare(runtime)).rejects.toThrow("Provider attempt superseded");
+          expect(events).toEqual(["refresh:verifyConditions", "refresh:verifyRelease", "changelog",
+            "npm-version", "refresh:prepare"]);
+          expect(fs.existsSync(path.join(cwd, "dist/index.js"))).toBe(false);
+          return;
+        }
         await pipeline.prepare(runtime);
         await pipeline.publish(runtime);
         expect(events).toEqual(
-          dryRun ? [] : ["changelog", "npm-version", "git-push", "npm-publish"],
+          dryRun ? [] : mode === "refresh"
+            ? ["refresh:verifyConditions", "refresh:verifyRelease", "changelog", "npm-version",
+              "refresh:prepare", "git-push", "npm-publish"]
+            : ["changelog", "npm-version", "git-push", "npm-publish"],
         );
         expect(fs.existsSync(path.join(cwd, "dist/index.js"))).toBe(!dryRun);
       } finally {

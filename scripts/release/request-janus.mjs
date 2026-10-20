@@ -27,7 +27,7 @@ export function requestFromContext(env, event) {
   requireValue(env.GITHUB_ACTIONS === "true" && env.GITHUB_REPOSITORY === repository &&
     env.GITHUB_REPOSITORY_ID === "1079467744" && env.GITHUB_REF === "refs/heads/main" &&
     env.GITHUB_JOB === "request-janus-release" && !env.GITHUB_HEAD_REF &&
-    env.JANUS_WAVESPEED_RELEASE_MODE === "verify", "Unexpected Janus dispatch context");
+    ["verify", "publish"].includes(env.JANUS_WAVESPEED_RELEASE_MODE), "Unexpected Janus dispatch context");
   const producer = producerIdentity({
     event: env.GITHUB_EVENT_NAME, runId: env.GITHUB_RUN_ID, runAttempt: env.GITHUB_RUN_ATTEMPT,
     workflowRef: env.GITHUB_WORKFLOW_REF, workflowSha: env.GITHUB_WORKFLOW_SHA,

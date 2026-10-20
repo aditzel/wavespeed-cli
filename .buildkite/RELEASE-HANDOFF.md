@@ -1,10 +1,11 @@
 # Semantic-release planning and artifact consumption
 
 This prepares the release route above the [versioned builder](VERSIONED-BUILD.md).
-The workflow has an opt-in verification mode; it remains inactive while
+The workflow has opt-in verification and publication modes; both remain inactive while
 `JANUS_WAVESPEED_RELEASE_MODE` is unset. Setting it to `verify` replaces normal
 main-branch publication with planning, Janus dispatch and hosted handoff validation.
-It does not publish. Other existing routes and `.releaserc.json` remain authoritative.
+It does not publish. The separate `publish` mode enables the hosted artifact
+publisher after commissioning. Other existing routes and `.releaserc.json` remain authoritative.
 
 ## Verification workflow
 
@@ -20,9 +21,9 @@ rejects a newer failed attempt, and independently reads the accepted build.
 Inventory and response sizes, request counts and elapsed time are bounded.
 It never retries an ambiguous create response automatically.
 
-A successful status for that pipeline starts the read-only `publish-release`
+A successful status for that pipeline starts the read-only `verify-release`
 verification job. The status URL is only a routing hint. A verifier pinned to
-Devops commit `cdfc2329168fad413a3ae820eebaebed23abb0af` independently checks the
+Devops commit `5bc13d18130c510119aa330bc1601b68459a4dc8` independently checks the
 active hosted job, original planner, newest native build, prerequisite and artifacts.
 `check-handoff.mjs` then validates the exact returned plan and bundle against the
 source checkout. It does not invoke semantic-release or a publication plugin.
@@ -46,6 +47,31 @@ existing test route. Explicit tagged-version recovery retains its existing tests
 and publisher, including when verification mode is enabled; never invoke it as a
 migration test. These paths still require migration and live parity evidence.
 Status callbacks cannot enter the original test/publish route or start a planner.
+
+## Hosted artifact publisher
+
+With mode `publish`, the same planner and dispatcher run. The successful status
+routes to `publish-release`, which has GitHub write and OIDC permissions and the
+original 360-minute publication budget. It installs the pinned release dependencies
+and npm 11.16.0, but does not build the CLI or run its test suite. Those steps are
+the authenticated Janus prerequisite and versioned build.
+
+`publish-verified.mjs` independently refreshes provider evidence before starting
+the engine, at `verifyConditions`, at `verifyRelease`, and immediately before
+artifact preparation. Each read must return the same plan, receipt and active
+hosted job identity; the protected helper binds verification/publication to
+different job names and modes. Local and remote main must still match the source.
+Private temporary files carry the provider reader tokens and are removed when
+the entrypoint exits; the Python reader receives no publishing token in its environment.
+Pending or changed evidence fails closed; a manual retry authenticates again.
+
+The pinned semantic-release engine receives the original plugins with only its
+build step replaced by artifact consumption. The early gate permits exactly one
+ordinary release branch, preventing an add-channel path before release validation.
+The final result must include the planned version/tag and concrete npm/GitHub
+publication results. An engine no-op, skipped publisher or partial result fails.
+This result check cannot undo a partial release: inspect registry and tag state
+before using the existing tagged-version recovery route.
 
 ## Plan the existing release decision
 
@@ -95,15 +121,14 @@ can push the release commit during prepare, before the core creates its tag.
 
 ## Cutover remains gated
 
-The protected producer/receipt adapters and verification workflow require live
-commissioning. The actual publisher, remaining test/manual/recovery routes,
+The protected producer/receipt adapters, verification workflow and hosted publisher
+require live commissioning. The remaining test/manual/recovery migrations,
 OIDC/provenance run, queue/execution/cancellation budgets and rollback are still
 cutover gates. Successful tests here establish decision, routing and byte checks,
 not native provider authentication or replay resistance.
-The caller must revalidate latest successful Buildkite attempts and receipt/run
-identity immediately before releasing; a no-op/stale engine result cannot be
-reported as a successful new publication. Preserve serialization and the successful
-test prerequisite. No actual npm, tag, release commit or GitHub release is authorized
+The publisher revalidates the latest successful Buildkite attempts and receipt/run
+identity at its release gates; live tests must still establish serialization,
+the successful test prerequisite and failure recovery. No actual npm, tag, release commit or GitHub release is authorized
 as a migration test.
 
 The default main workflow still publishes automatically. Do not merge the

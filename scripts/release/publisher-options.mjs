@@ -6,8 +6,7 @@ import { sha256, verifyArtifact } from "./versioned-artifact.mjs";
 
 // The caller must obtain these expected digests/source/run from a protected,
 // freshly verified provider receipt. Self-reported artifact hashes are not proof.
-// This factory is not wired to a publishing workflow until that gate exists.
-export function publisherOptions({ cwd, planBytes, artifactDirectory, expected }) {
+export function publisherOptions({ cwd, planBytes, artifactDirectory, expected, revalidate }) {
   requireValue(
     expected &&
       /^[a-f0-9]{64}$/.test(expected.planSha256) &&
@@ -38,20 +37,33 @@ export function publisherOptions({ cwd, planBytes, artifactDirectory, expected }
   artifact(); // Reject corrupt or mismatched handoffs before invoking the engine.
   let approved = false;
   const verify = {
+    verifyConditions(_config, context) {
+      if (!revalidate) return;
+      // With exactly one ordinary branch there is no higher release channel:
+      // the engine cannot take its addChannel mutation path before verifyRelease.
+      requireValue(context.options?.dryRun === false && context.branch?.name === "main" &&
+        context.branch.type === "release" && !context.branch.channel &&
+        context.branches?.length === 1 && context.branches[0].name === "main",
+      "Unexpected live release configuration");
+      return revalidate("verifyConditions");
+    },
     verifyRelease(_config, context) {
       approved = false;
-      requireValue(
-        context.cwd === cwd && context.branch?.name === "main",
-        "Unexpected publisher checkout or branch",
-      );
-      const current = releaseInputs(cwd, expected.sourceCommit);
-      requireValue(
-        isDeepStrictEqual(current.identity, inputs.identity),
-        "Publisher inputs changed after preflight",
-      );
-      verifyDecision(plan, context);
-      artifact();
-      approved = true;
+      const finish = () => {
+        requireValue(
+          context.cwd === cwd && context.branch?.name === "main",
+          "Unexpected publisher checkout or branch",
+        );
+        const current = releaseInputs(cwd, expected.sourceCommit);
+        requireValue(
+          isDeepStrictEqual(current.identity, inputs.identity),
+          "Publisher inputs changed after preflight",
+        );
+        verifyDecision(plan, context);
+        artifact();
+        approved = true;
+      };
+      return revalidate ? Promise.resolve(revalidate("verifyRelease")).then(finish) : finish();
     },
   };
   const consume = {
@@ -61,37 +73,40 @@ export function publisherOptions({ cwd, planBytes, artifactDirectory, expected }
         "Release decision must be verified before artifact preparation",
       );
       approved = false;
-      verifyDecision(plan, context);
-      const verified = artifact();
-      requireValue(
-        isDeepStrictEqual(
-          JSON.parse(fs.readFileSync(path.join(cwd, "package.json"))),
-          JSON.parse(verified.preparedPackage),
-        ),
-        "npm preparation differs from the versioned artifact",
-      );
-      const output = path.join(cwd, "dist");
-      const stat = fs.lstatSync(output, { throwIfNoEntry: false });
-      if (stat) {
-        requireValue(stat.isDirectory(), "Publisher dist must be a real directory");
-        const names = fs.readdirSync(output);
+      const finish = () => {
+        verifyDecision(plan, context);
+        const verified = artifact();
         requireValue(
-          names.length === 0 ||
-            (names.length === 1 &&
-              names[0] === "index.js" &&
-              fs.lstatSync(path.join(output, "index.js")).isFile()),
-          "Unexpected existing publisher output",
+          isDeepStrictEqual(
+            JSON.parse(fs.readFileSync(path.join(cwd, "package.json"))),
+            JSON.parse(verified.preparedPackage),
+          ),
+          "npm preparation differs from the versioned artifact",
         );
-      } else fs.mkdirSync(output);
-      const staging = fs.mkdtempSync(path.join(cwd, ".janus-bundle-"));
-      try {
-        const temporary = path.join(staging, "index.js");
-        fs.writeFileSync(temporary, verified.bundle);
-        fs.chmodSync(temporary, 0o755);
-        fs.renameSync(temporary, path.join(output, "index.js"));
-      } finally {
-        fs.rmSync(staging, { recursive: true, force: true });
-      }
+        const output = path.join(cwd, "dist");
+        const stat = fs.lstatSync(output, { throwIfNoEntry: false });
+        if (stat) {
+          requireValue(stat.isDirectory(), "Publisher dist must be a real directory");
+          const names = fs.readdirSync(output);
+          requireValue(
+            names.length === 0 ||
+              (names.length === 1 &&
+                names[0] === "index.js" &&
+                fs.lstatSync(path.join(output, "index.js")).isFile()),
+            "Unexpected existing publisher output",
+          );
+        } else fs.mkdirSync(output);
+        const staging = fs.mkdtempSync(path.join(cwd, ".janus-bundle-"));
+        try {
+          const temporary = path.join(staging, "index.js");
+          fs.writeFileSync(temporary, verified.bundle);
+          fs.chmodSync(temporary, 0o755);
+          fs.renameSync(temporary, path.join(output, "index.js"));
+        } finally {
+          fs.rmSync(staging, { recursive: true, force: true });
+        }
+      };
+      return revalidate ? Promise.resolve(revalidate("prepare")).then(finish) : finish();
     },
   };
   // Preserve all existing analyzers and publish/success/fail behavior. Only the
