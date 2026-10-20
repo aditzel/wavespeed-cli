@@ -110,7 +110,8 @@ jobs:
       !cancelled() && github.repository == 'aditzel/wavespeed-cli' &&
       contains(fromJSON('["verify","janus"]'), vars.JANUS_WAVESPEED_TEST_MODE) &&
       contains(fromJSON('["push","workflow_dispatch"]'), github.event_name) &&
-      needs.plan-release.outputs.decision != 'release'
+      needs.plan-release.outputs.decision != 'release' &&
+      !(github.repository == 'aditzel/wavespeed-cli' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_current_version && contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) && contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RECOVERY_MODE))
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -326,14 +327,276 @@ jobs:
                               str(root / "github-token"), str(root / "buildkite-token"), str(root)], check=True)
           PYTHON
 
+  request-recovery-verify:
+    if: >-
+      github.repository == 'aditzel/wavespeed-cli' && github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' && inputs.publish_current_version &&
+      contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) &&
+      vars.JANUS_WAVESPEED_RECOVERY_MODE == 'verify'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    concurrency:
+      group: wavespeed-recovery-request-${{ github.run_id }}-${{ github.run_attempt }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout recovery dispatcher
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "22"
+      - name: Request authenticated recovery tests and build
+        env:
+          JANUS_WAVESPEED_RECOVERY_MODE: ${{ vars.JANUS_WAVESPEED_RECOVERY_MODE }}
+          BUILDKITE_RECOVERY_WRITE_TOKEN: ${{ secrets.BUILDKITE_WAVESPEED_RECOVERY_WRITE_TOKEN }}
+        run: node scripts/release/request-recovery.mjs
+
+  verify-recovery:
+    if: >-
+      github.repository == 'aditzel/wavespeed-cli' &&
+      contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) &&
+      vars.JANUS_WAVESPEED_RECOVERY_MODE == 'verify' &&
+      github.event_name == 'status' && github.event.state == 'success' &&
+      github.event.context == 'buildkite/wavespeed-cli-recovery-build'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    concurrency:
+      group: wavespeed-release-publish
+      cancel-in-progress: false
+    env:
+      JANUS_WAVESPEED_RECOVERY_MODE: ${{ vars.JANUS_WAVESPEED_RECOVERY_MODE }}
+    steps:
+      - name: Checkout reviewed recovery verifier
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          repository: MiraiForge/devops
+          ref: f0a8a66149da26af43918f8d88f4cad3e352a91c
+          token: ${{ secrets.JANUS_HELPERS_READ_TOKEN }}
+          path: .janus-tools
+          persist-credentials: false
+      - name: Authenticate recovery before checking out publisher source
+        id: recovery
+        env:
+          POLICY_JSON: ${{ vars.JANUS_WAVESPEED_RECOVERY_POLICY }}
+          GITHUB_READER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUILDKITE_READER_TOKEN: ${{ secrets.BUILDKITE_WAVESPEED_RECOVERY_READ_TOKEN }}
+        run: |
+          python3 -I -B <<'PYTHON'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import tempfile
+          os.umask(0o077)
+          with tempfile.TemporaryDirectory(prefix="recovery-preflight-", dir=os.environ["RUNNER_TEMP"]) as state:
+              root = Path(state)
+              for filename, key in [("policy.json", "POLICY_JSON"), ("github-token", "GITHUB_READER_TOKEN"),
+                                    ("buildkite-token", "BUILDKITE_READER_TOKEN")]:
+                  value = os.environ.pop(key)
+                  if not value:
+                      raise SystemExit("Missing protected recovery configuration")
+                  (root / filename).write_text(value)
+              helper = Path(".janus-tools/infrastructure/buildkite-publishers/wavespeed-recovery.py").resolve()
+              subprocess.run(["python3", "-I", "-B", str(helper), "--policy", str(root / "policy.json"),
+                              "--github-token-file", str(root / "github-token"),
+                              "--buildkite-token-file", str(root / "buildkite-token"),
+                              "--output", str(root / "handoff")], check=True)
+              receipt = json.loads((root / "handoff/handoff.json").read_text())["receipt"]
+              with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+                  output.write("source=" + receipt["sourceCommit"] + "\n")
+          PYTHON
+      - name: Checkout authenticated recovery source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ steps.recovery.outputs.source }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: recovery-source
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+      - name: Update npm for OIDC support
+        run: npm install -g npm@11.16.0
+      - name: Verify recovery without publication
+        env:
+          POLICY_JSON: ${{ vars.JANUS_WAVESPEED_RECOVERY_POLICY }}
+          GITHUB_READER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUILDKITE_READER_TOKEN: ${{ secrets.BUILDKITE_WAVESPEED_RECOVERY_READ_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_CONFIG_ACCESS: public
+          NPM_CONFIG_PROVENANCE: "true"
+        run: |
+          python3 -I -B <<'PYTHON'
+          import os
+          from pathlib import Path
+          import subprocess
+          import tempfile
+          os.umask(0o077)
+          helper = Path(".janus-tools/infrastructure/buildkite-publishers/wavespeed-recovery.py").resolve()
+          with tempfile.TemporaryDirectory(prefix="recovery-publisher-", dir=os.environ["RUNNER_TEMP"]) as state:
+              root = Path(state)
+              for filename, key in [("policy.json", "POLICY_JSON"), ("github-token", "GITHUB_READER_TOKEN"),
+                                    ("buildkite-token", "BUILDKITE_READER_TOKEN")]:
+                  value = os.environ.pop(key)
+                  if not value:
+                      raise SystemExit("Missing protected recovery configuration")
+                  (root / filename).write_text(value)
+              subprocess.run(["node", "scripts/release/recover-verified.mjs", str(helper), str(root / "policy.json"),
+                              str(root / "github-token"), str(root / "buildkite-token"), str(root)],
+                              cwd="recovery-source", check=True)
+          PYTHON
+
+  request-recovery-publish:
+    if: >-
+      github.repository == 'aditzel/wavespeed-cli' && github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' && inputs.publish_current_version &&
+      contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) &&
+      vars.JANUS_WAVESPEED_RECOVERY_MODE == 'publish'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    concurrency:
+      group: wavespeed-recovery-request-${{ github.run_id }}-${{ github.run_attempt }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout recovery dispatcher
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "22"
+      - name: Request authenticated recovery tests and build
+        env:
+          JANUS_WAVESPEED_RECOVERY_MODE: ${{ vars.JANUS_WAVESPEED_RECOVERY_MODE }}
+          BUILDKITE_RECOVERY_WRITE_TOKEN: ${{ secrets.BUILDKITE_WAVESPEED_RECOVERY_WRITE_TOKEN }}
+        run: node scripts/release/request-recovery.mjs
+
+  publish-recovery:
+    if: >-
+      github.repository == 'aditzel/wavespeed-cli' &&
+      contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) &&
+      vars.JANUS_WAVESPEED_RECOVERY_MODE == 'publish' &&
+      github.event_name == 'status' && github.event.state == 'success' &&
+      github.event.context == 'buildkite/wavespeed-cli-recovery-build'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
+    concurrency:
+      group: wavespeed-release-publish
+      cancel-in-progress: false
+    env:
+      JANUS_WAVESPEED_RECOVERY_MODE: ${{ vars.JANUS_WAVESPEED_RECOVERY_MODE }}
+    steps:
+      - name: Checkout reviewed recovery verifier
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          repository: MiraiForge/devops
+          ref: f0a8a66149da26af43918f8d88f4cad3e352a91c
+          token: ${{ secrets.JANUS_HELPERS_READ_TOKEN }}
+          path: .janus-tools
+          persist-credentials: false
+      - name: Authenticate recovery before checking out publisher source
+        id: recovery
+        env:
+          POLICY_JSON: ${{ vars.JANUS_WAVESPEED_RECOVERY_POLICY }}
+          GITHUB_READER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUILDKITE_READER_TOKEN: ${{ secrets.BUILDKITE_WAVESPEED_RECOVERY_READ_TOKEN }}
+        run: |
+          python3 -I -B <<'PYTHON'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import tempfile
+          os.umask(0o077)
+          with tempfile.TemporaryDirectory(prefix="recovery-preflight-", dir=os.environ["RUNNER_TEMP"]) as state:
+              root = Path(state)
+              for filename, key in [("policy.json", "POLICY_JSON"), ("github-token", "GITHUB_READER_TOKEN"),
+                                    ("buildkite-token", "BUILDKITE_READER_TOKEN")]:
+                  value = os.environ.pop(key)
+                  if not value:
+                      raise SystemExit("Missing protected recovery configuration")
+                  (root / filename).write_text(value)
+              helper = Path(".janus-tools/infrastructure/buildkite-publishers/wavespeed-recovery.py").resolve()
+              subprocess.run(["python3", "-I", "-B", str(helper), "--policy", str(root / "policy.json"),
+                              "--github-token-file", str(root / "github-token"),
+                              "--buildkite-token-file", str(root / "buildkite-token"),
+                              "--output", str(root / "handoff")], check=True)
+              receipt = json.loads((root / "handoff/handoff.json").read_text())["receipt"]
+              with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+                  output.write("source=" + receipt["sourceCommit"] + "\n")
+          PYTHON
+      - name: Checkout authenticated recovery source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ steps.recovery.outputs.source }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: recovery-source
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+      - name: Update npm for OIDC support
+        run: npm install -g npm@11.16.0
+      - name: Recover the authenticated existing version
+        env:
+          POLICY_JSON: ${{ vars.JANUS_WAVESPEED_RECOVERY_POLICY }}
+          GITHUB_READER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUILDKITE_READER_TOKEN: ${{ secrets.BUILDKITE_WAVESPEED_RECOVERY_READ_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_CONFIG_ACCESS: public
+          NPM_CONFIG_PROVENANCE: "true"
+        run: |
+          python3 -I -B <<'PYTHON'
+          import os
+          from pathlib import Path
+          import subprocess
+          import tempfile
+          os.umask(0o077)
+          helper = Path(".janus-tools/infrastructure/buildkite-publishers/wavespeed-recovery.py").resolve()
+          with tempfile.TemporaryDirectory(prefix="recovery-publisher-", dir=os.environ["RUNNER_TEMP"]) as state:
+              root = Path(state)
+              for filename, key in [("policy.json", "POLICY_JSON"), ("github-token", "GITHUB_READER_TOKEN"),
+                                    ("buildkite-token", "BUILDKITE_READER_TOKEN")]:
+                  value = os.environ.pop(key)
+                  if not value:
+                      raise SystemExit("Missing protected recovery configuration")
+                  (root / filename).write_text(value)
+              subprocess.run(["node", "scripts/release/recover-verified.mjs", str(helper), str(root / "policy.json"),
+                              str(root / "github-token"), str(root / "buildkite-token"), str(root)],
+                              cwd="recovery-source", check=True)
+          PYTHON
+
   test:
     needs: plan-release
-    # Recovery retains its existing prerequisite until the independent recovery
-    # publisher is commissioned. Cutover also requires the versioned release route.
+    # Recovery retains this prerequisite while its separate mode is unset.
+    # Its opt-in route requires the versioned release configuration too.
     if: >-
       !cancelled() && github.event_name != 'status' && needs.plan-release.outputs.decision != 'release' &&
       (vars.JANUS_WAVESPEED_TEST_MODE != 'janus' ||
-       !contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) || inputs.publish_current_version)
+       !contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) || inputs.publish_current_version) &&
+      !(github.repository == 'aditzel/wavespeed-cli' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_current_version && contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) && contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RECOVERY_MODE))
     runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: read
@@ -370,7 +633,8 @@ jobs:
       !cancelled() && needs.test.result == 'success' &&
       github.event_name != 'status' && github.ref == 'refs/heads/main' &&
       (!contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) || inputs.publish_current_version) &&
-      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):')) &&
+      !(github.repository == 'aditzel/wavespeed-cli' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_current_version && contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) && contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RECOVERY_MODE))
     env:
       NPM_CONFIG_ACCESS: public
       NPM_CONFIG_PROVENANCE: "true"
