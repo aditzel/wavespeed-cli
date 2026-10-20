@@ -45,6 +45,8 @@ semantic-release chooses a version, updates package metadata, and invokes
 `bun run build` in its prepare phase. A future split must build that exact version
 on Janus and verify its source and artifact handoff before a minimal hosted
 publisher can use it. An ordinary CI build is not sufficient evidence.
+The [versioned build primitive](VERSIONED-BUILD.md) prepares an explicitly supplied
+version; trusted version selection and publisher handoff remain integration gates.
 
 The `publish_current_version` recovery path also needs its existing tag check,
 npm existence check and GitHub release behavior preserved. Keep these gates,

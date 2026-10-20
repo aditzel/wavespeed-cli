@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 1 || ( "$1" != "test" && "$1" != "validate-implementation" && "$1" != "release-test" ) ]]; then
-  echo "Usage: $0 {test|validate-implementation|release-test}" >&2
+if ! { [[ $# -eq 1 && ( "$1" == "test" || "$1" == "validate-implementation" || "$1" == "release-test" ) ]] ||
+       [[ $# -eq 2 && "$1" == "release-build" && "$2" =~ ^(0|[1-9][0-9]{0,7})\.(0|[1-9][0-9]{0,7})\.(0|[1-9][0-9]{0,7})$ ]]; }; then
+  echo "Usage: $0 {test|validate-implementation|release-test} | release-build VERSION" >&2
   exit 2
 fi
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 # Python is supplied by the reviewed image; -I ignores inherited Python configuration.
-exec python3 -I -B - "$1" <<'PY'
+exec python3 -I -B - "$@" <<'PY'
 import os
 from pathlib import Path
 import re
@@ -115,6 +116,9 @@ with tempfile.TemporaryDirectory(prefix="wavespeed-janus-") as state:
         if check(["bun", "--version"], capture=True).strip() != "1.3.14":
             print("CI requires Bun 1.3.14.", file=sys.stderr)
             raise CheckFailure(1)
+        if mode == "release-build":
+            check(["bun", "scripts/release/build-versioned.mjs", sys.argv[2]])
+            sys.exit(0)
         check(["bun", "install", "--frozen-lockfile"])
         check(["bun", "run", "build"])
         commands = ["generate", "edit", "generate-sequential", "edit-sequential"]
