@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "projects": {
+    "wavespeed-cli-release-test": {
+      "repository": "aditzel/wavespeed-cli",
+      "repositoryUrl": "https://github.com/aditzel/wavespeed-cli.git",
+      "defaultBranch": "main",
+      "pushBranches": ["main"],
+      "pullRequestBaseBranches": [],
+      "checkoutTokenFile": null,
+      "allowedEnvironment": [],
+      "jobs": {
+        "release-test": {
+          "node": "22",
+          "bun": "1.3.14",
+          "command": ["bash", "scripts/buildkite/check.sh", "release-test"],
+          "timeoutMinutes": 360,
+          "environment": {},
+          "artifacts": []
+        }
+      }
+    }
+  }
+}

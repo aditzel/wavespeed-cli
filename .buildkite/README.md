@@ -57,9 +57,9 @@ review workflow changes before approving outside-contributor runs, and enforce
 trusted-source admission in the Janus controller.
 
 `.github/workflows/release.yml` and `.github/workflows/junie.yml` remain unchanged.
-The separate, unpublished release-test preparation is parked locally and is not
-part of this ordinary CI PR. No release-test mode or publication operation is
-added here.
+The separate [release prerequisite preparation](RELEASE-TEST.md) adds a
+`release-test` wrapper mode and an inactive admission candidate. It does not
+change this ordinary pipeline or enable publication.
 
 ## Verification and remaining gates
 

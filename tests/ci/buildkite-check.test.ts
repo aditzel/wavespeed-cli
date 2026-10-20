@@ -13,13 +13,16 @@ type Settings = {
   invalidSuccess?: boolean;
   invalidMessage?: string;
 };
-const modes = ["test", "validate-implementation"] as const;
+const modes = ["test", "validate-implementation", "release-test"] as const;
 const helps = ["generate", "edit", "generate-sequential", "edit-sequential"];
-const testCommands = [
+const releaseTestCommands = [
   "bun install --frozen-lockfile",
   "bun run build",
   "bun test",
   "cli --help",
+];
+const testCommands = [
+  ...releaseTestCommands,
   ...helps.map((name) => `cli ${name} --help`),
 ];
 const validationCommands = [
@@ -33,7 +36,7 @@ const validationCommands = [
   "cli edit -p test -i https://example.com/test.jpg -s invalid",
 ];
 
-describe("protected ordinary Buildkite checks", () => {
+describe("protected Buildkite checks", () => {
   let directory: string;
   let checkout: string;
   let trace: string;
@@ -180,7 +183,11 @@ if (command === "bun install --frozen-lockfile" && (settings.hang || settings.or
       const result = await start([mode]).done;
       expect(result.code).toBe(0);
       expect(calls().map((call) => call.command)).toEqual(
-        mode === "test" ? testCommands : validationCommands,
+        mode === "test"
+          ? testCommands
+          : mode === "release-test"
+            ? releaseTestCommands
+            : validationCommands,
       );
       for (const call of calls()) {
         expect(call.cwd).toBe(fs.realpathSync(checkout));
@@ -229,6 +236,15 @@ if (command === "bun install --frozen-lockfile" && (settings.hang || settings.or
       assertClean();
     });
   }
+  for (const command of releaseTestCommands) {
+    it(`release-test retains failure at ${command} and prevents later stages`, async () => {
+      expect((await start(["release-test"], { fail: command }).done).code).toBe(71);
+      expect(calls().map((call) => call.command)).toEqual(
+        releaseTestCommands.slice(0, releaseTestCommands.indexOf(command) + 1),
+      );
+      assertClean();
+    });
+  }
   for (const extra of [{ WAVESPEED_LIVE_E2E: "1" }, { WAVESPEED_API_KEY: "real-inherited-key" }]) {
     it(`rejects inherited ${Object.keys(extra)[0]} before a stage`, async () => {
       expect((await start(["test"], {}, extra).done).code).toBe(1);
@@ -264,7 +280,7 @@ if (command === "bun install --frozen-lockfile" && (settings.hang || settings.or
     expect(calls()).toEqual([]);
     assertClean();
   });
-  for (const args of [[], ["release-test"], ["test", "extra"]]) {
+  for (const args of [[], ["publish"], ["test", "extra"]]) {
     it(`rejects unsupported argv ${JSON.stringify(args)}`, async () => {
       expect((await start(args).done).code).toBe(2);
       expect(calls()).toEqual([]);

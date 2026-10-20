@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 1 || ( "$1" != "test" && "$1" != "validate-implementation" ) ]]; then
-  echo "Usage: $0 {test|validate-implementation}" >&2
+if [[ $# -ne 1 || ( "$1" != "test" && "$1" != "validate-implementation" && "$1" != "release-test" ) ]]; then
+  echo "Usage: $0 {test|validate-implementation|release-test}" >&2
   exit 2
 fi
 
@@ -118,11 +118,12 @@ with tempfile.TemporaryDirectory(prefix="wavespeed-janus-") as state:
         check(["bun", "install", "--frozen-lockfile"])
         check(["bun", "run", "build"])
         commands = ["generate", "edit", "generate-sequential", "edit-sequential"]
-        if mode == "test":
+        if mode in ("test", "release-test"):
             check(["bun", "test"])
             check(["./dist/index.js", "--help"])
-            for command in commands:
-                check(["./dist/index.js", command, "--help"])
+            if mode == "test":
+                for command in commands:
+                    check(["./dist/index.js", command, "--help"])
         else:
             for command in commands:
                 if not re.search(r"sync.*mode", check(["./dist/index.js", command, "--help"], capture=True)):
