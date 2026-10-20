@@ -30,6 +30,10 @@ integrity checks **do not authenticate the producer or complete source tree**.
 
 ## Remaining integration requirements
 
+The [release plan and artifact consumer](RELEASE-HANDOFF.md) prepare the engine's
+decision binding and byte checks; authenticated provider/workflow integration is
+still required before either can authorize publishing.
+
 The trusted planner must preserve semantic-release 25.0.5's configured analyzers,
 fallback source-change logic, full history/tags, release notes and version choice.
 Its dry run still checks Git push access and plugin conditions; do not give the
