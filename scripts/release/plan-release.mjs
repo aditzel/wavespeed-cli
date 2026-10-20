@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import semanticRelease from "semantic-release";
 import {
   commit,
@@ -110,7 +111,7 @@ export async function planRelease({
   return makePlan(result, inputs, producer);
 }
 
-if (import.meta.main) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   try {
     requireValue(process.argv.length === 4, "Usage: plan-release.mjs SOURCE_SHA OUTPUT");
     const plan = await planRelease({
