@@ -9,6 +9,12 @@ dist
 # bun
 bun.lockb
 
+# foreign JavaScript lockfiles (Bun and bun.lock are authoritative)
+package-lock.json
+npm-shrinkwrap.json
+yarn.lock
+pnpm-lock.yaml
+
 # code coverage
 coverage
 *.lcov
