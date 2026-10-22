@@ -109,10 +109,10 @@ jobs:
     if: >-
       !cancelled() && github.repository == 'aditzel/wavespeed-cli' &&
       contains(fromJSON('["verify","janus"]'), vars.JANUS_WAVESPEED_TEST_MODE) &&
-      contains(fromJSON('["push","workflow_dispatch"]'), github.event_name) &&
-      needs.plan-release.outputs.decision != 'release' &&
-      !(github.repository == 'aditzel/wavespeed-cli' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_current_version && contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) && contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RECOVERY_MODE))
+      github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      needs.plan-release.outputs.decision != 'release'
     runs-on: ubuntu-24.04
+    environment: janus-wavespeed-release-tests
     timeout-minutes: 5
     permissions:
       contents: read
@@ -594,7 +594,7 @@ jobs:
     # Its opt-in route requires the versioned release configuration too.
     if: >-
       !cancelled() && github.event_name != 'status' && needs.plan-release.outputs.decision != 'release' &&
-      (vars.JANUS_WAVESPEED_TEST_MODE != 'janus' ||
+      (github.event_name == 'workflow_dispatch' || vars.JANUS_WAVESPEED_TEST_MODE != 'janus' ||
        !contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) || inputs.publish_current_version) &&
       !(github.repository == 'aditzel/wavespeed-cli' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_current_version && contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) && contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RECOVERY_MODE))
     runs-on: [self-hosted, Linux, X64]

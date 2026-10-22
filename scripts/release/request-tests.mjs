@@ -35,6 +35,7 @@ export function requestSchema(value) {
 export function requestFromContext(env, event) {
   requireValue(env.GITHUB_ACTIONS === "true" && env.GITHUB_REPOSITORY === repository &&
     env.GITHUB_REPOSITORY_ID === "1079467744" && env.GITHUB_JOB === "request-janus-test" && !env.GITHUB_HEAD_REF &&
+    env.GITHUB_EVENT_NAME === "push" && env.GITHUB_REF === "refs/heads/main" &&
     ["verify", "janus"].includes(env.JANUS_WAVESPEED_TEST_MODE), "Unexpected test dispatch context");
   requireValue(env.GITHUB_WORKFLOW_SHA === env.GITHUB_SHA &&
     env.GITHUB_WORKFLOW_REF === `${repository}/.github/workflows/release.yml@${env.GITHUB_REF}`,
@@ -109,6 +110,8 @@ function buildIdentity(build, wanted) {
 
 export async function dispatchTests(wanted, api) {
   requestSchema(wanted);
+  requireValue(wanted.event === "push" && wanted.ref === "refs/heads/main",
+    "Manual test requests use the separately commissioned Buildkite control");
   let candidates = [], complete = false;
   const ids = new Set(), numbers = new Set();
   for (let page = 1; page <= 5; page++) {

@@ -114,11 +114,12 @@ describe("bounded standalone Janus test dispatch", () => {
     }))).rejects.toThrow();
   });
 
-  it("accepts release commits and manual branches/tags including recovery without publication inputs", () => {
-    for (const ref of ["refs/heads/main", "refs/heads/feature/topic", "refs/tags/v1.3.5"]) {
+  it("accepts main pushes but rejects manual branch/tag contexts before dispatch", () => {
+    for (const ref of ["refs/heads/main", "refs/heads/feature/topic", "refs/tags/v1.3.5", "refs/tags/main"]) {
       const manual = { ...env, GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_REF: ref,
         GITHUB_WORKFLOW_REF: `aditzel/wavespeed-cli/.github/workflows/release.yml@${ref}` };
-      expect(requestFromContext(manual, { repository: event.repository, inputs: { publish_current_version: "true" } }).ref).toBe(ref);
+      expect(() => requestFromContext(manual, { repository: event.repository,
+        inputs: { publish_current_version: "true" } })).toThrow();
     }
     expect(requestFromContext(env, { ...event, head_commit: { message: "chore(release): 1.4.0" } })).toEqual(wanted);
     for (const change of [{ GITHUB_EVENT_NAME: "status" }, { GITHUB_REPOSITORY_ID: "9" },
@@ -131,17 +132,27 @@ describe("bounded standalone Janus test dispatch", () => {
       expect(() => requestSchema({ ...wanted, event: "workflow_dispatch", ref })).toThrow();
   });
 
-  it("dispatches a manual tag and ignores separate requests at the same commit", async () => {
-    const request = { ...wanted, event: "workflow_dispatch", ref: "refs/tags/v1.3.5" };
+  it("rejects manual requests before provider access", async () => {
+    for (const ref of ["refs/heads/main", "refs/heads/topic", "refs/tags/v1.3.5", "refs/tags/main"]) {
+      let calls = 0;
+      await expect(dispatchTests({ ...wanted, event: "workflow_dispatch", ref }, async () => {
+        calls++;
+        return { value: [], next: false };
+      })).rejects.toThrow();
+      expect(calls).toBe(0);
+    }
+  });
+
+  it("recognizes historical manual inventory without dispatching another manual request", async () => {
     const other = { ...wanted, runId: 99, event: "workflow_dispatch", ref: "refs/heads/other" };
     let created: any;
-    const result = await dispatchTests(request, async (suffix: string, body?: any) => {
+    const result = await dispatchTests(wanted, async (suffix: string, body?: any) => {
       if (body) created = body;
-      return { value: suffix.startsWith("?") ? [build(1, other)] : build(2, request), next: false };
+      return { value: suffix.startsWith("?") ? [build(1, other)] : build(2), next: false };
     });
     expect(result.buildNumber).toBe(2);
-    expect(created.branch).toBe("v1.3.5");
-    expect(JSON.parse(created.meta_data[requestKey])).toEqual(request);
+    expect(created.branch).toBe("main");
+    expect(JSON.parse(created.meta_data[requestKey])).toEqual(wanted);
     expect(created).not.toHaveProperty("env");
   });
 
