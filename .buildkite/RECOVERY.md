@@ -17,6 +17,10 @@ and `JANUS_WAVESPEED_RECOVERY_MODE` is set:
 Use the fixed `wavespeed-cli-recovery-build` pipeline. Distinct hosted
 `request-recovery-verify` and `request-recovery-publish` jobs bind the requested
 mode; a verification build cannot become publishable when a setting changes.
+Read-only `verify-recovery` callbacks use the separate `wavespeed-recovery-verify`
+concurrency group, so they cannot replace a pending publisher in GitHub's default
+single-pending queue. `publish-recovery` remains serialized with `publish-release`
+in `wavespeed-release-publish`. Neither group cancels a running job.
 The standalone dispatcher has no caller-controlled version/environment and
 never retries an uncertain create response.
 
