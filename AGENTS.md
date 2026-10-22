@@ -27,3 +27,9 @@
   - `src/config`: Configuration loading and validation.
   - `src/utils`: Shared helpers.
 - **Config Priority**: Project config > Home config > Defaults.
+
+# Commits & Pull Requests
+
+- **Conventional Commits**: Write commit subjects and PR titles as [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, `chore:`, `ci:`, `test:`, `refactor:`, ...). semantic-release (`.releaserc.json`) derives versions and the changelog from these types on `main`.
+- **Agent attribution**: When a coding agent contributes to a commit, end the commit message with a `Co-authored-by:` trailer identifying that agent, for example `Co-authored-by: factory-droid[bot] <138933559+factory-droid[bot]@users.noreply.github.com>`.
+- This applies to new commits only; existing history is not rewritten.
