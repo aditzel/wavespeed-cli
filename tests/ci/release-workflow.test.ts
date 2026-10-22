@@ -84,7 +84,7 @@ describe("release workflow routing", () => {
     expect(run).not.toMatch(/npm publish|bun run release|semanticRelease\(/);
     expect(jobs["plan-release"].steps.find((step: any) => step.name === "Upload release plan").with.overwrite).toBe(false);
     expect(jobs.test["runs-on"]).toEqual(["self-hosted", "Linux", "X64"]);
-    expect(jobs.release["runs-on"]).toEqual(["self-hosted", "Linux", "X64"]);
+    expect(jobs.release["runs-on"]).toBe("ubuntu-24.04");
   });
 
   it("uses only the hosted publisher for successful status callbacks in publish mode", () => {
