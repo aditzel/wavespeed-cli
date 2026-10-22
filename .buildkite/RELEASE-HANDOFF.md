@@ -124,10 +124,12 @@ can push the release commit during prepare, before the core creates its tag.
 
 ## Cutover remains gated
 
-The protected producer/receipt adapters, verification workflow and hosted publisher
-require live commissioning. The remaining test/manual/recovery migrations,
-OIDC/provenance run, queue/execution/cancellation budgets and rollback are still
-cutover gates. Successful tests here establish decision, routing and byte checks,
+The protected producer/receipt adapters, verification workflow, hosted publisher,
+remaining test route and [current-version recovery route](RECOVERY.md) are implemented
+but require live commissioning. Separate authenticated Buildkite manual CI admission
+still needs implementation and commissioning. OIDC/provenance proof,
+queue/execution/cancellation budgets and rollback remain cutover gates.
+Successful tests here establish decision, routing and byte checks,
 not native provider authentication or replay resistance.
 The publisher revalidates the latest successful Buildkite attempts and receipt/run
 identity at its release gates; live tests must still establish serialization,
@@ -174,8 +176,11 @@ Keep `JANUS_WAVESPEED_TEST_MODE` unset until native commissioning is ready.
 For main pushes, `verify` dispatches alongside the existing test. `janus` skips the old test only
 when `JANUS_WAVESPEED_RELEASE_MODE` is also `verify` or `publish`; planned releases
 already test inside their versioned pipeline. Manual recovery retains its old
-test and publishing dependency until the recovery artifact path is implemented.
-Neither flag activates that unfinished recovery migration.
+test and publishing dependency while `JANUS_WAVESPEED_RECOVERY_MODE` is unset or
+unsupported, or the versioned release mode is disabled. With release mode `verify`
+or `publish`, recovery mode `verify` selects read-only hosted verification and
+`publish` selects the hosted publisher; see [current-version recovery](RECOVERY.md).
+Neither release mode nor test mode alone enables that separate recovery route.
 
 Manual build/test CI will start from Buildkite UI/API under the
 [accepted manual CI decision](https://github.com/MiraiForge/devops/blob/docs/manual-ci-buildkite-controls/runbooks/buildkite-manual-ci.md).
