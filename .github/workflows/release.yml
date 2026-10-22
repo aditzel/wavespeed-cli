@@ -369,7 +369,7 @@ jobs:
       contents: read
       actions: read
     concurrency:
-      group: wavespeed-release-publish
+      group: wavespeed-recovery-verify
       cancel-in-progress: false
     env:
       JANUS_WAVESPEED_RECOVERY_MODE: ${{ vars.JANUS_WAVESPEED_RECOVERY_MODE }}

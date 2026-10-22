@@ -194,7 +194,13 @@ describe("release workflow routing", () => {
       expect(job.permissions).toEqual(mode === "verify" ? { contents: "read", actions: "read" } :
         { contents: "write", actions: "read", "id-token": "write" });
       expect(job["runs-on"]).toBe("ubuntu-24.04");
-      expect(job.concurrency).toEqual(jobs["publish-release"].concurrency);
+      if (mode === "publish") {
+        expect(job.concurrency).toEqual(jobs["publish-release"].concurrency);
+      } else {
+        expect(job.concurrency).toEqual({ group: "wavespeed-recovery-verify", "cancel-in-progress": false });
+        for (const publisher of ["publish-release", "publish-recovery"])
+          expect(job.concurrency.group).not.toBe(jobs[publisher].concurrency.group);
+      }
       expect(job.steps[0].with.repository).toBe("MiraiForge/devops");
       expect(job.steps[0].with.ref).toBe("f0a8a66149da26af43918f8d88f4cad3e352a91c");
       expect(job.steps[1].id).toBe("recovery");
