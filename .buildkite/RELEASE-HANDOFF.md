@@ -147,25 +147,52 @@ and [Git prepare push](https://github.com/semantic-release/git/blob/v10.0.1/lib/
 
 The standalone `scripts/release/request-tests.mjs` requests the original four
 Release test commands from `wavespeed-cli-release-tests` when no versioned
-release build takes that obligation. It preserves main pushes (including
-`chore(release):` commits), manual branches and manual tags. Requests contain
+release build takes that obligation. It accepts only main pushes (including
+`chore(release):` commits). Requests contain
 only repository/workflow/run/attempt/event/commit/ref identity. The fixed
 pipeline receives no environment grants, requested version or publishing
 authority. Inventory plus an independent post-create read prevents blind
 creation retries; an ambiguous POST must be inspected before retrying.
 
-Configure a pipeline-scoped `BUILDKITE_WAVESPEED_TEST_WRITE_TOKEN` for dispatch,
-`BUILDKITE_WAVESPEED_TEST_READ_TOKEN` for completion, the existing private-helper
+Store the pipeline-scoped `BUILDKITE_WAVESPEED_TEST_WRITE_TOKEN` only in the
+`janus-wavespeed-release-tests` GitHub environment. Configure **Selected branches
+and tags** with exactly one **branch** rule named `main`, no tag rules, and
+administrator bypass disabled. Do not use "Protected branches only": that
+setting allows every branch when no branch protection exists. Do not create
+repository or organization copies of this credential. The GitHub environment
+policy must be verified before the secret is installed; a job condition or a
+pinned script alone cannot stop a modified branch workflow from requesting a
+repository secret. Historical workflows without this environment receive no
+test-write credential. A tag named `main` must also be rejected.
+
+Configure `BUILDKITE_WAVESPEED_TEST_READ_TOKEN` for completion, the existing private-helper
 reader, and the independently reviewed `JANUS_WAVESPEED_TEST_POLICY`. The
 protected image must approve the exact workflow and standalone dispatcher Git
 blobs. Repository-controlled configuration cannot supply those trusted pins.
 Keep `JANUS_WAVESPEED_TEST_MODE` unset until native commissioning is ready.
 
-`verify` dispatches alongside the existing test. `janus` skips the old test only
+For main pushes, `verify` dispatches alongside the existing test. `janus` skips the old test only
 when `JANUS_WAVESPEED_RELEASE_MODE` is also `verify` or `publish`; planned releases
 already test inside their versioned pipeline. Manual recovery retains its old
 test and publishing dependency until the recovery artifact path is implemented.
 Neither flag activates that unfinished recovery migration.
+
+Manual build/test CI will start from Buildkite UI/API under the
+[accepted manual CI decision](https://github.com/MiraiForge/devops/blob/docs/manual-ci-buildkite-controls/runbooks/buildkite-manual-ci.md).
+The GitHub test dispatcher rejects every `workflow_dispatch`, including main,
+branches and tags, before provider access. Until the separate authenticated
+Buildkite manual admission is commissioned, manual tests retain the original
+test job as a rollback path even when the test mode is `janus`. Separately
+gated versioned-release and tagged-recovery publishers keep their own authority;
+this change does not enable them or authorize publication.
+
+Before installing the write secret or enabling a mode, verify the environment's
+custom branch policy and absence of any repository/organization copy, and prove
+that branch and tag workflows cannot enter it even after changing their job
+conditions. Recheck these protections when changing environment configuration.
+No secret or migration mode should be added as part of a branch-denial probe.
+Rollback removes the test mode and environment secret; never restore access by
+copying the credential into repository secrets or broadening the branch rules.
 
 The read-only `verify-janus-test` callback handles terminal test statuses. It
 checks the fixed provider API, original workflow attempt, newest matching build,
@@ -175,8 +202,9 @@ newer failed attempt cannot fall back to an older green build. The callback
 does not check out or execute the tested repository code.
 
 GitHub runs status workflows from the default branch, so callback source and
-tested source are authenticated separately. This preserves manual branch/tag
-and older-main test identities. A status is only a routing hint and a successful
+tested source are authenticated separately. The result reader can still recognize
+historical manual branch/tag and older-main identities; that compatibility does
+not re-enable manual dispatch. A status is only a routing hint and a successful
 dispatch is not a successful test. Before cutover, verify actual callback
 delivery for every event and require the native
 `buildkite/wavespeed-cli-release-tests` check. The five-minute hosted adapters

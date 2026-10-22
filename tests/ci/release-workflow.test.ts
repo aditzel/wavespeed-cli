@@ -109,7 +109,6 @@ describe("release workflow routing", () => {
 
   it("routes remaining test events to Janus only after both modes are configured", () => {
     for (const change of [{ decision: "no-release", planResult: "success" }, { message: "chore(release): 1.4.0" },
-      { event: "workflow_dispatch", ref: "refs/heads/topic" }, { event: "workflow_dispatch", ref: "refs/tags/v1.3.5" },
       { planResult: "failure" }]) {
       const cutover = routes({ mode: "verify", testMode: "janus", ...change });
       expect(cutover["request-janus-test"]).toBe(true);
@@ -119,12 +118,23 @@ describe("release workflow routing", () => {
     }
     expect(routes({ testMode: "janus" }).test).toBe(true);
     expect(routes({ mode: "verify", testMode: "janus", decision: "release", planResult: "success" })["request-janus-test"]).toBe(false);
-    for (const change of [{ canceled: true }, { event: "status" }, { repo: "outsider/fork" }])
+    for (const change of [{ canceled: true }, { event: "status" }, { repo: "outsider/fork" },
+      { ref: "refs/heads/topic" }, { ref: "refs/tags/main" }])
       expect(routes({ mode: "verify", testMode: "janus", ...change })["request-janus-test"]).toBe(false);
     const recovery = routes({ mode: "publish", testMode: "janus", event: "workflow_dispatch", recovery: true });
     expect(recovery.test).toBe(true);
     expect(recovery.release).toBe(true);
-    expect(recovery["request-janus-test"]).toBe(true);
+    expect(recovery["request-janus-test"]).toBe(false);
+  });
+
+  it("keeps manual test fallback without entering the credential-bearing dispatcher", () => {
+    for (const mode of ["", "verify", "publish"]) for (const testMode of ["", "verify", "janus"])
+      for (const ref of ["refs/heads/main", "refs/heads/topic", "refs/tags/v1.3.5", "refs/tags/main"]) {
+        const manual = routes({ mode, testMode, event: "workflow_dispatch", ref });
+        expect(manual["request-janus-test"]).toBe(false);
+        expect(manual.test).toBe(true);
+      }
+    expect(jobs["request-janus-test"].environment).toBe("janus-wavespeed-release-tests");
   });
 
   it("verifies terminal test statuses independently of the callback commit without publishing", () => {
