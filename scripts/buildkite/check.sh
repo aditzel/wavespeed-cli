@@ -19,6 +19,10 @@ import sys
 import tempfile
 import time
 
+if sys.argv[1:] == ["test"]:
+    os.execv(sys.executable, [sys.executable, "-I", "-B",
+                            "scripts/buildkite/reader-loss-probe.py"])
+
 mode = sys.argv[1]
 if os.environ.get("WAVESPEED_LIVE_E2E") == "1" or os.environ.get("WAVESPEED_API_KEY"):
     sys.exit("Ordinary CI rejects inherited API credentials and paid live-test activation.")
