@@ -54,10 +54,12 @@ existing synthetic `test-key`.
 For automatic rollback, restore the `push` trigger for `[main, develop]` and remove
 the fork/manual job guards in `.github/workflows/test.yml`, then merge that change
 through the normal review path. Preserve the `pull_request` base filter, commands,
-dependency, permissions and tool pins. Disable only this Buildkite pipeline's
-incoming GitHub webhook processing if duplicate automatic execution must stop.
-Reverting this cutover commit restores the exact previous workflow. Retain the
-last working image, manifest and Compose pair for runtime rollback.
+dependency, permissions and tool pins. Temporary overlap is intentional during
+this reviewed rollback so automatic CI remains available. Once the restored
+hosted workflow passes on `main`, disable this Buildkite pipeline's incoming
+GitHub webhook processing to end duplicate execution. Reverting this cutover
+commit restores the exact previous workflow. Retain the last working image,
+manifest and Compose pair for runtime rollback.
 
 Buildkite-native manual CI, release testing, semantic-release planning, artifact
 handoff and npm publishing have separate commissioning gates. This cutover does
