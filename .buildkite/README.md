@@ -1,10 +1,11 @@
-# Protected Janus ordinary CI preparation
+# Protected Janus ordinary CI
 
-Automatic GitHub Actions remains enabled and authoritative. This prepares the
-two ordinary jobs from `.github/workflows/test.yml`; it does not commission a
-Buildkite provider or change release, npm publishing, Junie or application behavior.
+The protected Buildkite pipeline owns ordinary CI for pushes to `main`/`develop`
+and same-repository pull requests targeting `main`. GitHub Actions retains fork
+PR checks and explicit hosted recovery. Release, npm publishing, Junie and
+application behavior have separate migration requirements.
 
-The proposed project is `wavespeed-cli-ci`, repository `aditzel/wavespeed-cli`.
+The project is `wavespeed-cli-ci`, repository `aditzel/wavespeed-cli`.
 The provider must start the image-owned `janus-ci bootstrap` command on queue
 `janus-linux`. `.buildkite/pipeline.yml` is a review reference, not a pipeline to
 upload from an untrusted checkout. Source admission and approved commands belong
@@ -16,7 +17,9 @@ to the protected image manifest.
 | `validate-implementation` | `bash scripts/buildkite/check.sh validate-implementation` | successful `test` | 360 minutes |
 
 Both jobs require Bun **1.3.14**, plus the image's Python 3 supervisor and Node 22
-baseline. The 360-minute limits preserve the original Actions default. Neither
+baseline. The 360-minute provider limits preserve the original whole-job Actions
+default; controller setup and cleanup share that ceiling. They do not promise
+360 usable command minutes plus overhead. Neither
 ordinary job has an artifact-upload or release handoff contract.
 
 ## Commands and isolation
@@ -46,11 +49,12 @@ sandbox.
 
 ## Hosted fallback and original workflows
 
-Pushes to `main`/`develop` and pull requests targeting `main` retain their original
-triggers, commands and `test` → `validate-implementation` dependency. All ordinary
-Actions events temporarily use hosted Ubuntu 24.04 because the previous self-hosted
-runners are retired. Fork PRs and explicit `workflow_dispatch` runs remain hosted
-after the separate native cutover.
+Pushes to `main`/`develop` and same-repository pull requests targeting `main` run
+the original command stages and `test` → `validate-implementation` dependency on
+Janus. Fork PRs to `main` and explicit `workflow_dispatch` recovery runs use hosted
+Ubuntu 24.04. Both hosted jobs skip trusted PR events; the Buildkite status is the
+automatic result for those events. Buildkite-native manual CI is a separate route
+that still requires commissioning; the hosted recovery control remains available.
 The ordinary workflow grants only `contents: read`, and both checkouts disable
 credential persistence. Fork routing is not a runner-access security boundary:
 review workflow changes before approving outside-contributor runs, and enforce
@@ -77,7 +81,6 @@ Every exported blob and mode is compared with the committed source. The containe
 have read-only roots, all capabilities dropped, no-new-privileges, a 2 CPU / 8 GiB /
 512 PID limit, disposable storage, and no host bind mounts, credentials or sockets.
 
-Hosted manual execution and native Buildkite commissioning remain parent-owned
-gates: verify both dependent jobs, exact source identity, trusted/fork admission,
-status reporting, retries, cancellation, main/develop runs and rollback before
-cutover. Keep automatic Actions enabled until those checks pass.
+See [CI operations](ci-operations.md) for provider event filters, acceptance proof,
+status contexts and hosted rollback. The publication preparation PRs remain
+separate from this ordinary CI cutover.
