@@ -1,5 +1,8 @@
 import { it } from "bun:test";
 
-it("temporary Janus dependency failure probe; never merge", () => {
-  throw new Error("Intentional test failure to verify downstream validation is blocked");
-});
+it("temporary Janus cancellation probe; never merge", async () => {
+  if (process.env.HOME?.includes("wavespeed-janus-")) {
+    console.log("Janus cancellation probe is ready");
+    await Bun.sleep(120_000);
+  }
+}, 150_000);
