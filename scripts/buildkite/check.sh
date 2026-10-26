@@ -1,148 +1,46 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-if [[ $# -ne 1 || ( "$1" != "test" && "$1" != "validate-implementation" ) ]]; then
-  echo "Usage: $0 {test|validate-implementation}" >&2
-  exit 2
-fi
-
-cd "$(dirname "${BASH_SOURCE[0]}")/../.."
-
-# Python is supplied by the reviewed image; -I ignores inherited Python configuration.
-exec python3 -I -B - "$1" <<'PY'
+exec python3 -I -B - "$@" <<'PY'
+import datetime
+import json
 import os
-from pathlib import Path
-import re
 import signal
-import subprocess
 import sys
-import tempfile
 import time
 
-mode = sys.argv[1]
-if os.environ.get("WAVESPEED_LIVE_E2E") == "1" or os.environ.get("WAVESPEED_API_KEY"):
-    sys.exit("Ordinary CI rejects inherited API credentials and paid live-test activation.")
+EXPECTED_COMMAND_SECONDS = 21600
+SAFETY_STOP_SECONDS = 22020
+START = time.monotonic()
 
-# Bun and the CLI load these files implicitly, before command validation.
-configuration = [".env", ".env.local", ".env.test", ".env.test.local",
-                 ".env.development", ".env.development.local", ".env.production",
-                 ".env.production.local", ".wavespeedrc", ".wavespeedrc.json",
-                 ".wavespeedrc.yaml", ".wavespeedrc.yml", "wavespeed.config.json",
-                 "wavespeed.config.yaml", "wavespeed.config.yml"]
-for name in configuration:
-    if Path(name).exists() or Path(name).is_symlink():
-        sys.exit("Ordinary CI requires a checkout without active dotenv or Wavespeed configuration: " + name)
+def event(name, **extra):
+    print(json.dumps({"probe": "janus-full-command-budget-20261026", "event": name,
+                      "utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                      "elapsedSeconds": round(time.monotonic() - START, 3),
+                      "pid": os.getpid(), **extra}), flush=True)
 
-active = None
-canceled = None
+def stopped(sig, _frame):
+    event("controller-signal", signal=sig)
+    raise SystemExit(128 + sig)
 
+for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+    signal.signal(sig, stopped)
 
-class CheckFailure(Exception):
-    def __init__(self, code):
-        self.code = code
+if len(sys.argv) != 2 or sys.argv[1] not in ("test", "validate-implementation"):
+    raise SystemExit(2)
+if sys.argv[1] != "test":
+    event("unexpected-dependent-lane-start")
+    raise SystemExit(99)
 
-
-def signal_group(pid, sig):
-    try:
-        os.killpg(pid, sig)
-    except ProcessLookupError:
-        pass
-
-
-def cancel(sig, _frame):
-    global canceled
-    if canceled is None:
-        canceled = sig
-    if active is not None:
-        signal_group(active.pid, signal.SIGTERM)
-
-
-signal.signal(signal.SIGTERM, cancel)
-signal.signal(signal.SIGINT, cancel)
-
-with tempfile.TemporaryDirectory(prefix="wavespeed-janus-") as state:
-    root = Path(state)
-    for name in ["home", "tmp", "bun-cache", "npm-cache"]:
-        (root / name).mkdir()
-    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "CI": "true",
-           "HOME": str(root / "home"), "TMPDIR": str(root / "tmp"),
-           "BUN_INSTALL_CACHE_DIR": str(root / "bun-cache"),
-           "npm_config_cache": str(root / "npm-cache"),
-           "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
-
-    def run(argv, capture=False, extra=None):
-        global active
-        if canceled is not None:
-            raise CheckFailure(128 + canceled)
-        # A file keeps an orphan with an inherited output FD from blocking communicate().
-        with tempfile.TemporaryFile() as output:
-            active = subprocess.Popen(argv, env=dict(env, **(extra or {})),
-                                      start_new_session=True,
-                                      stdout=output if capture else None,
-                                      stderr=subprocess.STDOUT if capture else None)
-            deadline = None
-            try:
-                while active.poll() is None:
-                    if canceled is not None:
-                        signal_group(active.pid, signal.SIGTERM)
-                        if deadline is None:
-                            deadline = time.monotonic() + 0.5
-                        if time.monotonic() >= deadline:
-                            signal_group(active.pid, signal.SIGKILL)
-                    time.sleep(0.02)
-                code = active.wait()
-            finally:
-                # Also remove descendants surviving an ordinary successful/failed command.
-                signal_group(active.pid, signal.SIGTERM)
-                time.sleep(0.2)
-                signal_group(active.pid, signal.SIGKILL)
-                active.wait()
-                active = None
-            if canceled is not None:
-                raise CheckFailure(128 + canceled)
-            output.seek(0)
-            return (code if code >= 0 else 128 - code), output.read().decode("utf-8", errors="replace")
-
-    def check(argv, capture=False):
-        code, output = run(argv, capture)
-        if code:
-            if output:
-                print(output, file=sys.stderr, end="")
-            raise CheckFailure(code)
-        return output
-
-    try:
-        if check(["bun", "--version"], capture=True).strip() != "1.3.14":
-            print("CI requires Bun 1.3.14.", file=sys.stderr)
-            raise CheckFailure(1)
-        check(["bun", "install", "--frozen-lockfile"])
-        check(["bun", "run", "build"])
-        commands = ["generate", "edit", "generate-sequential", "edit-sequential"]
-        if mode == "test":
-            check(["bun", "test"])
-            check(["./dist/index.js", "--help"])
-            for command in commands:
-                check(["./dist/index.js", command, "--help"])
-        else:
-            for command in commands:
-                if not re.search(r"sync.*mode", check(["./dist/index.js", command, "--help"], capture=True)):
-                    raise CheckFailure(1)
-            for command in ["edit", "edit-sequential"]:
-                if "file paths" not in check(["./dist/index.js", command, "--help"], capture=True):
-                    raise CheckFailure(1)
-            cases = [("Prompt is required", ["edit"]),
-                     ("Images are required", ["edit", "-p", "test"]),
-                     ("Size must be WIDTH", ["edit", "-p", "test", "-i", "https://example.com/test.jpg", "-s", "invalid"])]
-            for expected, args in cases:
-                # Only these deliberately invalid commands receive the original dummy key.
-                code, output = run(["./dist/index.js"] + args, capture=True,
-                                   extra={"WAVESPEED_API_KEY": "test-key"})
-                if code == 0 or expected not in output:
-                    print("Expected offline validation failure: " + expected, file=sys.stderr)
-                    raise CheckFailure(1)
-                print(expected)
-        if canceled is not None:
-            raise CheckFailure(128 + canceled)
-    except CheckFailure as error:
-        sys.exit(error.code)
+event("command-start", commandBudgetSeconds=EXPECTED_COMMAND_SECONDS,
+      safetyStopSeconds=SAFETY_STOP_SECONDS, lane=sys.argv[1])
+next_heartbeat = START + 300
+while time.monotonic() - START < SAFETY_STOP_SECONDS:
+    time.sleep(1)
+    if time.monotonic() >= next_heartbeat:
+        event("heartbeat")
+        next_heartbeat += 300
+# A successful commissioning run is terminated by the protected 360-minute limit.
+# Reaching this independent bound means that limit was not enforced.
+event("unexpected-safety-stop")
+raise SystemExit(99)
 PY
