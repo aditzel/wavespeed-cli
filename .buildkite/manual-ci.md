@@ -2,7 +2,7 @@
 
 The separate [WaveSpeed manual CI pipeline](https://buildkite.com/mirai-forge/wavespeed-cli-manual-ci)
 is active on Janus for commissioning. Ordinary push/PR CI remains on
-`wavespeed-cli-ci`; its [operations and rollback guide](ci-operations.md) still
+`wavespeed-cli-ci`; its [reviewed operations and rollback guide](https://github.com/aditzel/wavespeed-cli/blob/5b3a8ac36bcf6f377026fc63aee14f00c9897759/.buildkite/ci-operations.md) still
 applies. Keep the GitHub-hosted manual recovery control until the remaining
 manual acceptance gates are complete.
 
@@ -29,11 +29,14 @@ even if its selected branch or tag subsequently moves or disappears. A stale
 successful test attempt cannot authorize validation while its retry is pending
 or failed.
 
-The jobs use the same offline CI commands as ordinary CI. They produce protected
-artifact indexes identifying the tested source, job attempt and result; they do
-not make paid API requests, upload package payloads or publish to npm. Release
-and publishing routes are separate. Reader credentials stay in the root
-controller and are never passed to repository processes.
+The jobs use the same offline CI commands as ordinary CI. During authorized
+finalization, the image-owned Janus controller uploads `janus-artifact-index.json`
+with the tested source, job attempt and result. The repository commands do not
+create this index: the controller produces it even when the declared payload
+list is `artifacts: []`. Failed identity verification can prevent its upload.
+These jobs do not make paid API requests, upload package payloads or publish to
+npm. Release and publishing routes are separate. Reader credentials stay in the
+root controller and are never passed to repository processes.
 
 ## Verified recovery and remaining gates
 
@@ -44,8 +47,25 @@ downstream jobs or artifacts. After restoring the approved reader, an in-place
 retry passed tests and validation and produced two indexes bound to their
 successful job attempts and exact source commit.
 
-This proves bootstrap authentication-denial and retry recovery. It does not prove
-network/5xx outages or loss of identity during an executing command. API-origin
-creation, remaining timeout/queue/rollback cases and final manual cutover still
-need their own live evidence. Green ordinary CI and this pilot result do not
-authorize removing the hosted recovery control.
+Separately, [manual build 11](https://buildkite.com/mirai-forge/wavespeed-cli-manual-ci/builds/11)
+tested reader authentication loss during execution. The next provider observation
+stopped the test probe after about 120 seconds, and dependent validation did not
+start. After reader restoration, [build 12](https://buildkite.com/mirai-forge/wavespeed-cli-manual-ci/builds/12)
+passed both jobs at the same reviewed `5b3a8ac` source used by build 10 and uploaded
+two controller indexes, each with an empty payload list and the exact successful
+job/source identity. This exercises HTTP 401, not network/5xx outages.
+
+Retiring hosted manual recovery requires recorded live acceptance of every gate:
+
+- API-origin creation and the remaining manual admission/refusal cases.
+- Network/5xx failures, command-timeout and remaining-budget handling, queue
+  interference, cancellation cleanup and retry/dependency behavior.
+- Rollback of the manual activation to the prior image, manifest and provider
+  configuration, followed by successful recovery. An unrelated pipeline's
+  rollback that retains this manual profile does not establish this gate.
+- Ordinary trusted-PR admission, fork exclusion on Janus with hosted fork
+  execution, exact-commit GitHub status reporting and real `main` and `develop`
+  push builds, as required by the linked ordinary operations guide.
+
+Keep the hosted recovery control until all these gates pass for the configuration
+being commissioned. A green pilot alone does not complete manual cutover.
