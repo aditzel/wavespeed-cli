@@ -35,6 +35,12 @@ idempotency checks. It does not install application dependencies or build/test.
 
 Configure only the reviewed `JANUS_WAVESPEED_RECOVERY_POLICY`, private helper
 checkout read credential and pipeline-specific Buildkite read/write credentials.
+Both recovery dispatcher jobs require the `janus-wavespeed-recovery-build`
+environment. Store `BUILDKITE_WAVESPEED_RECOVERY_WRITE_TOKEN` only there after
+configuring a single selected **branch** rule for `main`, no tag rules, and no
+administrator bypass. Keep repository/organization copies absent and verify
+branch/tag denial before provisioning; follow the
+[writer access and rollback contract](RELEASE-HANDOFF.md#release-and-recovery-writer-access).
 No configuration is installed by this PR. Keep existing hosted routes until
 native event/status, retry/cancellation, source/tag races, effective timeouts,
 route-aware required checks and rollback have been verified. Review the

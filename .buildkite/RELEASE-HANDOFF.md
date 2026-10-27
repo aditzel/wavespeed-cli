@@ -35,12 +35,49 @@ latest-source verification, not a guarantee that every queued request executes.
 See [GitHub's concurrency behavior](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency).
 
 Before enabling this mode, configure a reviewed `JANUS_WAVESPEED_RELEASE_POLICY`
-repository variable, `BUILDKITE_WAVESPEED_RELEASE_WRITE_TOKEN` with only the needed
-build read/write access, `BUILDKITE_WAVESPEED_RELEASE_READ_TOKEN` for independent
-reads, and `JANUS_HELPERS_READ_TOKEN` for read-only checkout of private Devops.
+repository variable, the environment-scoped writer described below,
+`BUILDKITE_WAVESPEED_RELEASE_READ_TOKEN` for independent reads, and
+`JANUS_HELPERS_READ_TOKEN` for read-only checkout of private Devops.
 The protected Janus image must contain the matching reviewed producer policy,
 controller and scoped GitHub reader. Missing configuration fails closed.
 Do not place any publishing credentials in the Janus job.
+
+### Release and recovery writer access
+
+Provision each pipeline-specific Buildkite writer only in its corresponding
+GitHub environment, with the minimum build read/write access needed by its
+dispatcher:
+
+| Environment | Environment secret | Authorized dispatcher jobs |
+| --- | --- | --- |
+| `janus-wavespeed-release-build` | `BUILDKITE_WAVESPEED_RELEASE_WRITE_TOKEN` | `request-janus-release` |
+| `janus-wavespeed-recovery-build` | `BUILDKITE_WAVESPEED_RECOVERY_WRITE_TOKEN` | `request-recovery-verify`, `request-recovery-publish` |
+
+Before adding either secret, configure **Selected branches and tags** with exactly
+one rule: type **Branch**, name **`main`**. Allow no tag rules and disable
+administrator bypass in the environment settings. For the branch restriction,
+the REST `deployment_branch_policy` is `protected_branches: false` and
+`custom_branch_policies: true`, with a single deployment branch policy
+`{ "name": "main", "type": "branch" }`.
+Do not use **Protected branches only**: it allows all branches when the repository
+has no branch protection rules. See GitHub's
+[environment protection documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments).
+
+Keep both writer names absent from repository and organization secrets. The job
+conditions and dispatcher checks are additional validation; a modified branch
+workflow can remove those checks before reading a repository secret. GitHub's
+environment rules must deny that workflow before it receives the credential.
+An older workflow without the environment declaration must receive no writer.
+
+Activation requires checking the actual environment rules and secret locations,
+then proving that a non-main branch and a tag (including a tag named `main`)
+cannot enter either environment even with changed job conditions. Run those
+denial probes without secrets or migration modes. Local workflow tests verify
+routing and environment declarations, not the live GitHub protection settings.
+Only after this proof and the matching Janus policy review may a separately
+approved writer be installed. Recovery access does not authorize a publication
+probe. Rollback removes the relevant mode and environment secret; never copy the
+writer to repository secrets or broaden branch rules to restore service.
 
 No-release decisions, release-commit pushes and manual non-main runs use the
 separately prepared versionless test route when configured. Explicit tagged-version

@@ -79,8 +79,14 @@ jobs:
 
   request-janus-release:
     needs: plan-release
-    if: needs.plan-release.outputs.decision == 'release'
+    if: >-
+      github.repository == 'aditzel/wavespeed-cli' &&
+      contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) &&
+      github.ref == 'refs/heads/main' && needs.plan-release.outputs.decision == 'release' &&
+      ((github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(release):')) ||
+       (github.event_name == 'workflow_dispatch' && !inputs.publish_current_version))
     runs-on: ubuntu-24.04
+    environment: janus-wavespeed-release-build
     timeout-minutes: 5
     permissions:
       contents: read
@@ -334,6 +340,7 @@ jobs:
       contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) &&
       vars.JANUS_WAVESPEED_RECOVERY_MODE == 'verify'
     runs-on: ubuntu-24.04
+    environment: janus-wavespeed-recovery-build
     timeout-minutes: 5
     permissions:
       contents: read
@@ -464,6 +471,7 @@ jobs:
       contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) &&
       vars.JANUS_WAVESPEED_RECOVERY_MODE == 'publish'
     runs-on: ubuntu-24.04
+    environment: janus-wavespeed-recovery-build
     timeout-minutes: 5
     permissions:
       contents: read

@@ -46,6 +46,40 @@ describe("release workflow routing", () => {
       ["request-janus-release"]).toBe(true);
   });
 
+  it("does not let a release decision alone select the credential-bearing dispatcher", () => {
+    for (const mode of ["verify", "publish"]) {
+      const planned = { mode, decision: "release", planResult: "success" };
+      for (const event of ["push", "workflow_dispatch"])
+        expect(routes({ ...planned, event })["request-janus-release"]).toBe(true);
+      for (const change of [{ ref: "refs/heads/topic" }, { ref: "refs/tags/main" },
+        { ref: "refs/tags/v1.3.5" }, { event: "status" }, { repo: "outsider/fork" },
+        { mode: "" }, { mode: "unsupported" }, { message: "chore(release): 1.4.0" },
+        { event: "workflow_dispatch", recovery: true }, { planResult: "failure" },
+        { planResult: "cancelled" }, { planResult: "skipped" }])
+        expect(routes({ ...planned, ...change })["request-janus-release"]).toBe(false);
+    }
+  });
+
+  it("binds every Buildkite writer consumer to its dedicated environment", () => {
+    const expected: Record<string, [string, string]> = {
+      "request-janus-release": ["janus-wavespeed-release-build", "BUILDKITE_WAVESPEED_RELEASE_WRITE_TOKEN"],
+      "request-janus-test": ["janus-wavespeed-release-tests", "BUILDKITE_WAVESPEED_TEST_WRITE_TOKEN"],
+      "request-recovery-verify": ["janus-wavespeed-recovery-build", "BUILDKITE_WAVESPEED_RECOVERY_WRITE_TOKEN"],
+      "request-recovery-publish": ["janus-wavespeed-recovery-build", "BUILDKITE_WAVESPEED_RECOVERY_WRITE_TOKEN"],
+    };
+    const writers = Object.entries(jobs).filter(([, job]) => /secrets\.BUILDKITE_\w+_WRITE_TOKEN/.test(JSON.stringify(job)));
+    expect(writers.map(([name]) => name).sort()).toEqual(Object.keys(expected).sort());
+    for (const [name, value] of writers) {
+      const job = value as any;
+      const [environment, secret] = expected[name]!;
+      expect(job.environment).toBe(environment);
+      expect(job.permissions).toEqual({ contents: "read" });
+      expect([...JSON.stringify(job).matchAll(/secrets\.(BUILDKITE_\w+_WRITE_TOKEN)/g)]
+        .map((match) => match[1])).toEqual([secret]);
+    }
+    expect(JSON.stringify(workflow.env || {})).not.toContain("WRITE_TOKEN");
+  });
+
   it("retains no-release, release-commit and non-main tests plus tagged recovery behavior", () => {
     expect(routes({ mode: "verify", decision: "no-release", planResult: "success" }).test).toBe(true);
     expect(routes({ mode: "verify", decision: "no-release", planResult: "success" }).release).toBe(false);
@@ -171,7 +205,7 @@ describe("release workflow routing", () => {
       expect(result.release).toBe(false);
       expect(result["request-janus-test"]).toBe(false);
       expect(result["publish-recovery"]).toBe(false);
-      for (const change of [{ ref: "refs/tags/v1.3.5" }, { ref: "refs/heads/topic" },
+      for (const change of [{ ref: "refs/tags/v1.3.5" }, { ref: "refs/tags/main" }, { ref: "refs/heads/topic" },
         { recovery: false }, { event: "push" }, { repo: "outsider/fork" }, { mode: "" }]) {
         expect(routes({ mode: "verify", recoveryMode, all: true, event: "workflow_dispatch", recovery: true,
           ...change })[`request-recovery-${recoveryMode}`]).toBe(false);
