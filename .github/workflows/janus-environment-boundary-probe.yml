@@ -1,0 +1,41 @@
+name: Janus environment boundary probe
+
+on:
+  push:
+    branches: [test/wavespeed-env-boundary-20261027]
+
+permissions: {}
+
+jobs:
+  control:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+      - run: echo 'Secret-free probe control reached its runner'
+
+  release-boundary:
+    runs-on: ubuntu-24.04
+    environment: janus-wavespeed-release-build
+    timeout-minutes: 1
+    steps:
+      - run: |
+          echo 'ERROR: non-main branch entered the release environment'
+          exit 1
+
+  recovery-boundary:
+    runs-on: ubuntu-24.04
+    environment: janus-wavespeed-recovery-build
+    timeout-minutes: 1
+    steps:
+      - run: |
+          echo 'ERROR: non-main branch entered the recovery environment'
+          exit 1
+
+  test-boundary:
+    runs-on: ubuntu-24.04
+    environment: janus-wavespeed-release-tests
+    timeout-minutes: 1
+    steps:
+      - run: |
+          echo 'ERROR: non-main branch entered the test environment'
+          exit 1
