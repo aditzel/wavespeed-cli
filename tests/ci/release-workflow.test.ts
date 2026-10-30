@@ -109,7 +109,7 @@ describe("release workflow routing", () => {
     expect(jobs["verify-release"].concurrency).toEqual({ group: "wavespeed-release-publish", "cancel-in-progress": false });
     const helper = jobs["verify-release"].steps.find((step: any) => step.name === "Checkout reviewed verifier");
     expect(helper.with.repository).toBe("MiraiForge/devops");
-    expect(helper.with.ref).toBe("5bc13d18130c510119aa330bc1601b68459a4dc8");
+    expect(helper.with.ref).toBe("3ff6ff730c9607546551e11f9ae271ce0235487a");
     for (const job of Object.values(jobs) as any[]) for (const step of job.steps) {
       if (step.uses) expect(step.uses).toMatch(/^[\w/-]+@[a-f0-9]{40}$/);
       if (step.uses?.startsWith("actions/checkout@")) expect(step.with["persist-credentials"]).toBe(false);
@@ -187,7 +187,7 @@ describe("release workflow routing", () => {
     expect(callback["timeout-minutes"]).toBe(5);
     expect(callback.steps).toHaveLength(2);
     expect(callback.steps[0].with.repository).toBe("MiraiForge/devops");
-    expect(callback.steps[0].with.ref).toBe("3ec5499e8ffe5743e64f8dbed7597ce0034044bd");
+    expect(callback.steps[0].with.ref).toBe("3ff6ff730c9607546551e11f9ae271ce0235487a");
     const commands = callback.steps.map((step: any) => step.run || "").join("\n");
     expect(commands).toContain("wavespeed-tests.py");
     expect(commands).not.toMatch(/bun install|bun test|npm publish|bun run release/);
