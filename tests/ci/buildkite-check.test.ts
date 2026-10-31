@@ -13,13 +13,18 @@ type Settings = {
   invalidSuccess?: boolean;
   invalidMessage?: string;
 };
-const modes = ["test", "validate-implementation"] as const;
+const modes = ["test", "validate-implementation", "release-test", "release-build"] as const;
+const releaseBuildCommand = "bun scripts/release/build-versioned.mjs 9.8.7";
+const modeArgs = (mode: string) => mode === "release-build" ? [mode, "9.8.7"] : [mode];
 const helps = ["generate", "edit", "generate-sequential", "edit-sequential"];
-const testCommands = [
+const releaseTestCommands = [
   "bun install --frozen-lockfile",
   "bun run build",
   "bun test",
   "cli --help",
+];
+const testCommands = [
+  ...releaseTestCommands,
   ...helps.map((name) => `cli ${name} --help`),
 ];
 const validationCommands = [
@@ -33,7 +38,7 @@ const validationCommands = [
   "cli edit -p test -i https://example.com/test.jpg -s invalid",
 ];
 
-describe("protected ordinary Buildkite checks", () => {
+describe("protected Buildkite checks", () => {
   let directory: string;
   let checkout: string;
   let trace: string;
@@ -72,7 +77,7 @@ const fs = require("node:fs"), args = process.argv.slice(2), settings = JSON.par
 if (${JSON.stringify(kind)} === "bun" && args[0] === "--version") { console.log(settings.version || "1.3.14"); process.exit(0); }
 const command = ${JSON.stringify(kind)} + " " + args.join(" ");
 fs.appendFileSync(${JSON.stringify(trace)}, JSON.stringify({command,cwd:process.cwd(),env:process.env}) + "\\n");
-if (command === "bun install --frozen-lockfile" && (settings.hang || settings.orphan)) {
+if ((command === "bun install --frozen-lockfile" || command === ${JSON.stringify(releaseBuildCommand)}) && (settings.hang || settings.orphan)) {
   process.on("SIGTERM", () => {}); process.on("SIGINT", () => {});
   Bun.spawn([process.execPath, "-e", ${JSON.stringify(child)}], {stdout:"inherit",stderr:"inherit"});
   while (!fs.existsSync(${JSON.stringify(pids)}) || fs.readFileSync(${JSON.stringify(pids)}, "utf8").trim().split("\\n").length < 2) await Bun.sleep(10);
@@ -177,10 +182,16 @@ if (command === "bun install --frozen-lockfile" && (settings.hang || settings.or
 
   for (const mode of modes) {
     it(`${mode} preserves commands and isolates configuration and credentials`, async () => {
-      const result = await start([mode]).done;
+      const result = await start(modeArgs(mode)).done;
       expect(result.code).toBe(0);
       expect(calls().map((call) => call.command)).toEqual(
-        mode === "test" ? testCommands : validationCommands,
+        mode === "test"
+          ? testCommands
+          : mode === "release-build"
+            ? [releaseBuildCommand]
+          : mode === "release-test"
+            ? releaseTestCommands
+            : validationCommands,
       );
       for (const call of calls()) {
         expect(call.cwd).toBe(fs.realpathSync(checkout));
@@ -194,7 +205,7 @@ if (command === "bun install --frozen-lockfile" && (settings.hang || settings.or
     });
     for (const signal of ["SIGTERM", "SIGINT"] as const) {
       it(`${mode} handles ${signal}, stops signal-ignoring descendants and removes temporary state`, async () => {
-        const running = start([mode], { hang: true });
+        const running = start(modeArgs(mode), { hang: true });
         await waitUntil(() => descendantPids().length === 2);
         const descendants = descendantPids();
         if (!running.child.pid) throw new Error("Wrapper did not start");
@@ -208,15 +219,15 @@ if (command === "bun install --frozen-lockfile" && (settings.hang || settings.or
         expect(result.signal).toBeNull();
         expect(result.code).toBe(signal === "SIGTERM" ? 143 : 130);
         await waitUntil(() => descendants.every((pid) => !alive(pid)));
-        expect(calls().map((call) => call.command)).toEqual([testCommands[0]]);
+        expect(calls().map((call) => call.command)).toEqual([mode === "release-build" ? releaseBuildCommand : testCommands[0]]);
         assertClean();
       }, 10_000);
     }
     it(`${mode} retains ordinary failure and removes leftover descendants`, async () => {
-      const result = await start([mode], { orphan: true }).done;
+      const result = await start(modeArgs(mode), { orphan: true }).done;
       expect(result.code).toBe(71);
       await waitUntil(() => descendantPids().every((pid) => !alive(pid)));
-      expect(calls().map((call) => call.command)).toEqual([testCommands[0]]);
+      expect(calls().map((call) => call.command)).toEqual([mode === "release-build" ? releaseBuildCommand : testCommands[0]]);
       assertClean();
     }, 10_000);
   }
@@ -225,6 +236,15 @@ if (command === "bun install --frozen-lockfile" && (settings.hang || settings.or
       expect((await start(["test"], { fail: command }).done).code).toBe(71);
       expect(calls().map((call) => call.command)).toEqual(
         testCommands.slice(0, testCommands.indexOf(command) + 1),
+      );
+      assertClean();
+    });
+  }
+  for (const command of releaseTestCommands) {
+    it(`release-test retains failure at ${command} and prevents later stages`, async () => {
+      expect((await start(["release-test"], { fail: command }).done).code).toBe(71);
+      expect(calls().map((call) => call.command)).toEqual(
+        releaseTestCommands.slice(0, releaseTestCommands.indexOf(command) + 1),
       );
       assertClean();
     });
@@ -264,7 +284,8 @@ if (command === "bun install --frozen-lockfile" && (settings.hang || settings.or
     expect(calls()).toEqual([]);
     assertClean();
   });
-  for (const args of [[], ["release-test"], ["test", "extra"]]) {
+  for (const args of [[], ["publish"], ["test", "extra"], ["release-build"],
+    ["release-build", "1.2.3", "extra"], ...["v1.2.3", "01.2.3", "1.2.3-beta.1", "1.2.3+meta", "-1.2.3", "1.2.3;id", "1.2.3\n", "999999999.1.1"].map((version) => ["release-build", version])]) {
     it(`rejects unsupported argv ${JSON.stringify(args)}`, async () => {
       expect((await start(args).done).code).toBe(2);
       expect(calls()).toEqual([]);
