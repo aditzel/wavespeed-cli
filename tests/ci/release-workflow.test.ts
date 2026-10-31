@@ -236,7 +236,7 @@ describe("release workflow routing", () => {
           expect(job.concurrency.group).not.toBe(jobs[publisher].concurrency.group);
       }
       expect(job.steps[0].with.repository).toBe("MiraiForge/devops");
-      expect(job.steps[0].with.ref).toBe("f0a8a66149da26af43918f8d88f4cad3e352a91c");
+      expect(job.steps[0].with.ref).toBe("3ff6ff730c9607546551e11f9ae271ce0235487a");
       expect(job.steps[1].id).toBe("recovery");
       expect(job.steps[2].with.ref).toBe("${{ steps.recovery.outputs.source }}");
       expect(job.steps[2].with["fetch-depth"]).toBe(0);
