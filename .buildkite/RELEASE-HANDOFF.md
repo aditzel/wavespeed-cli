@@ -23,7 +23,7 @@ It never retries an ambiguous create response automatically.
 
 A successful status for that pipeline starts the read-only `verify-release`
 verification job. The status URL is only a routing hint. A verifier pinned to
-Devops commit `5bc13d18130c510119aa330bc1601b68459a4dc8` independently checks the
+Devops commit `3ff6ff730c9607546551e11f9ae271ce0235487a` independently checks the
 active hosted job, original planner, newest native build, prerequisite and artifacts.
 `check-handoff.mjs` then validates the exact returned plan and bundle against the
 source checkout. It does not invoke semantic-release or a publication plugin.

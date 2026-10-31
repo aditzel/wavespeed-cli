@@ -60,7 +60,9 @@ credential persistence. Fork routing is not a runner-access security boundary:
 review workflow changes before approving outside-contributor runs, and enforce
 trusted-source admission in the Janus controller.
 
-`.github/workflows/release.yml` and `.github/workflows/junie.yml` remain unchanged.
+`.github/workflows/junie.yml` remains unchanged. `.github/workflows/release.yml`
+includes opt-in Janus release, test and recovery routes; see
+[release handoff](RELEASE-HANDOFF.md) and [recovery](RECOVERY.md).
 The separate [release prerequisite preparation](RELEASE-TEST.md) adds a
 `release-test` wrapper mode and an inactive admission candidate. It does not
 change this ordinary pipeline or enable publication.
