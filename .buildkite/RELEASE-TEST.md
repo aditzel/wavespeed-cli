@@ -25,7 +25,7 @@ artifact-upload contract and does not add the ordinary lane's subcommand checks.
 
 `release-test.project.json` is a review input for the Devops image-context
 generator, not a manifest that a checkout may load at runtime. Its proposed
-pipeline is `wavespeed-cli-release-test`, bootstrapped by the image-owned
+pipeline is `wavespeed-cli-release-tests`, bootstrapped by the image-owned
 `janus-ci bootstrap` on `janus-linux`. The protected manifest must be reviewed,
 baked into the image and commissioned before any provider can use it.
 

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "projects": {
-    "wavespeed-cli-release-test": {
+    "wavespeed-cli-release-tests": {
       "repository": "aditzel/wavespeed-cli",
       "repositoryUrl": "https://github.com/aditzel/wavespeed-cli.git",
       "defaultBranch": "main",
