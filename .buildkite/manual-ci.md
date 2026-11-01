@@ -2,7 +2,7 @@
 
 The separate [WaveSpeed manual CI pipeline](https://buildkite.com/mirai-forge/wavespeed-cli-manual-ci)
 is active on Janus for commissioning. Ordinary push/PR CI remains on
-`wavespeed-cli-ci`; its [reviewed operations and rollback guide](https://github.com/aditzel/wavespeed-cli/blob/5b3a8ac36bcf6f377026fc63aee14f00c9897759/.buildkite/ci-operations.md) still
+`wavespeed-cli-ci`; its [reviewed operations and rollback guide](ci-operations.md) still
 applies. Keep the GitHub-hosted manual recovery control until the remaining
 manual acceptance gates are complete.
 
