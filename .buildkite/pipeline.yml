@@ -9,7 +9,7 @@ steps:
     command: janus-ci test
     agents:
       queue: janus-linux
-    timeout_in_minutes: 360
+    timeout_in_minutes: 15
     env:
       CI: "true"
 
@@ -19,6 +19,6 @@ steps:
     depends_on: test
     agents:
       queue: janus-linux
-    timeout_in_minutes: 360
+    timeout_in_minutes: 15
     env:
       CI: "true"

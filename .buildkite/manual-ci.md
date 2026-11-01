@@ -19,12 +19,12 @@ freezes the source commit and job graph, and generates the existing CI sequence:
 
 | Job | Dependency | Command allowance | Provider limit |
 | --- | --- | --- | --- |
-| `test` | none | 360 minutes | 372 minutes |
-| `validate-implementation` | current successful `test` attempt | 360 minutes | 372 minutes |
+| `test` | none | 15 minutes | 27 minutes |
+| `validate-implementation` | current successful `test` attempt | 15 minutes | 27 minutes |
 
 The extra provider allowance covers admission, checkout and finalization. These
 are the configured manual limits; the ordinary pipeline retains its separate
-360-minute whole-job ceiling. Retrying an admitted job uses the frozen commit,
+15-minute whole-job ceiling. Retrying an admitted job uses the frozen commit,
 even if its selected branch or tag subsequently moves or disappears. A stale
 successful test attempt cannot authorize validation while its retry is pending
 or failed.

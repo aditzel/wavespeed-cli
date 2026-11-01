@@ -24,8 +24,8 @@ Keep skip-existing-commit, skip-intermediate and cancel-intermediate disabled to
 preserve the original workflow behavior. The protected graph runs `test` first
 and `validate-implementation` only after success. Both use Bun 1.3.14, the reviewed
 Node 22 toolchain, a fresh isolated checkout, no credential environment grants,
-and no artifact uploads. Each provider job has the original 360-minute whole-job
-ceiling, including setup and cleanup.
+and no artifact uploads. Each provider job has a 15-minute whole-job ceiling, including setup and
+cleanup.
 
 GitHub receives `buildkite/wavespeed-cli-ci` for branch builds and
 `buildkite/wavespeed-cli-ci/pr` for PR builds. The latter must succeed for trusted
