@@ -13,13 +13,13 @@ to the protected image manifest.
 
 | Job | Approved repository command | Dependency | Timeout |
 | --- | --- | --- | --- |
-| `test` | `bash scripts/buildkite/check.sh test` | none | 360 minutes |
-| `validate-implementation` | `bash scripts/buildkite/check.sh validate-implementation` | successful `test` | 360 minutes |
+| `test` | `bash scripts/buildkite/check.sh test` | none | 15 minutes |
+| `validate-implementation` | `bash scripts/buildkite/check.sh validate-implementation` | successful `test` | 15 minutes |
 
 Both jobs require Bun **1.3.14**, plus the image's Python 3 supervisor and Node 22
-baseline. The 360-minute provider limits preserve the original whole-job Actions
-default; controller setup and cleanup share that ceiling. They do not promise
-360 usable command minutes plus overhead. Neither
+baseline. The 15-minute provider limits bound the whole job; controller setup and
+cleanup share that ceiling. They do not promise 15 usable command minutes
+plus overhead. Neither
 ordinary job has an artifact-upload or release handoff contract.
 
 ## Commands and isolation
