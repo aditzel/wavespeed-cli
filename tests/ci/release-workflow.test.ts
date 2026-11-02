@@ -132,7 +132,10 @@ describe("release workflow routing", () => {
     for (const change of [{ stale: true }, { status: "failure" }, { context: "other" }, { repo: "outsider/fork" }])
       expect(routes({ mode: "publish", event: "status", ...change })["publish-release"]).toBe(false);
     expect(jobs["publish-release"]["runs-on"]).toBe("ubuntu-24.04");
-    expect(jobs["publish-release"]["timeout-minutes"]).toBe(360);
+    expect(jobs["publish-release"]["timeout-minutes"]).toBe(30);
+    expect(jobs["publish-recovery"]["timeout-minutes"]).toBe(30);
+    expect(jobs.test["timeout-minutes"]).toBe(15);
+    expect(jobs.release["timeout-minutes"]).toBe(30);
     expect(jobs["publish-release"].permissions).toEqual({ contents: "write", actions: "read", "id-token": "write" });
     expect(jobs["publish-release"].concurrency).toEqual(jobs["verify-release"].concurrency);
     expect(jobs["publish-release"].steps[0].with["fetch-depth"]).toBe(0);

@@ -45,7 +45,7 @@ export function readRecovery(directory, env) {
 
 function execute(command, argv, cwd, env) {
   const result = spawnSync(command, argv, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
-    timeout: 360 * 60 * 1000, maxBuffer: 4 * 1024 * 1024 });
+    timeout: 30 * 60 * 1000, maxBuffer: 4 * 1024 * 1024 });
   if (result.error || result.signal || !Number.isInteger(result.status)) throw new Error("Recovery command did not complete");
   return { status: result.status, stdout: result.stdout || "" };
 }

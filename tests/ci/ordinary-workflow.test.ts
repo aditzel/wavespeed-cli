@@ -64,7 +64,7 @@ describe("ordinary CI ownership", () => {
     expect(workflow.permissions).toEqual({ contents: "read" });
     for (const job of Object.values(jobs) as any[]) {
       expect(job["runs-on"]).toBe("ubuntu-24.04");
-      expect(job["timeout-minutes"] ?? 360).toBe(360);
+      expect(job["timeout-minutes"]).toBe(15);
       expect(job.permissions).toBeUndefined();
       for (const step of job.steps) {
         if (step.uses) expect(step.uses).toMatch(/@[a-f0-9]{40}$/);
