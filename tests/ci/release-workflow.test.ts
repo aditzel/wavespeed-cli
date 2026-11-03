@@ -24,7 +24,7 @@ function routes({ mode = "", testMode = "", recoveryMode = "", all = false, even
       { publish_current_version: recovery, test_only: testOnly }, needs, (value: string, prefix: string) => value.startsWith(prefix), () => canceled, (items: string[], item: string) => items.includes(item), JSON.parse);
   };
   return Object.fromEntries(["plan-release", "request-janus-release", "verify-release", "publish-release", "request-janus-test", "verify-janus-test", "test", "release"]
-    .concat(all ? ["request-recovery-verify", "request-recovery-publish", "verify-recovery", "publish-recovery"] : [])
+    .concat(all ? ["request-recovery-verify", "request-recovery-publish", "verify-recovery", "publish-recovery", "reject-conflicting-inputs"] : [])
     .map((name) => [name, run(name)]));
 }
 
@@ -69,15 +69,34 @@ describe("release workflow routing", () => {
             const routed = routes({ mode, testMode, recoveryMode, recovery, testOnly: true,
               event: "workflow_dispatch", all: true });
             expect(Object.entries(routed).filter(([, enabled]) => enabled).map(([name]) => name))
-              .toEqual(testMode ? ["request-janus-test"] : []);
+              .toEqual(recovery ? ["reject-conflicting-inputs"] : testMode ? ["request-janus-test"] : []);
           }
-    // Conflicting inputs reach the test dispatcher, which rejects them before
-    // provider access, never a publisher or the legacy runner.
+    // Conflicting inputs never enter a credential-bearing dispatcher, publisher
+    // or legacy runner, regardless of Janus mode configuration.
     for (const change of [{ ref: "refs/heads/topic" }, { ref: "refs/tags/main" },
       { repo: "outsider/fork" }, { canceled: true }]) {
       expect(Object.values(routes({ mode: "publish", testMode: "janus", recoveryMode: "publish",
         event: "workflow_dispatch", testOnly: true, all: true, ...change }))).not.toContain(true);
     }
+  });
+
+  it("fails conflicting manual inputs without checkout, credentials or provider access", () => {
+    const validation = jobs["reject-conflicting-inputs"];
+    expect(validation.permissions).toEqual({});
+    expect(validation.environment).toBeUndefined();
+    expect(validation.needs).toBeUndefined();
+    expect(validation.steps).toHaveLength(1);
+    expect(validation.steps[0].uses).toBeUndefined();
+    const result = spawnSync("bash", ["-c", validation.steps[0].run], {
+      env: { PATH: "/usr/bin:/bin" }, encoding: "utf8", timeout: 3000,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain("::error::test_only and publish_current_version cannot both be true.");
+    for (const ref of ["refs/heads/main", "refs/heads/topic", "refs/tags/main"])
+      expect(routes({ all: true, event: "workflow_dispatch", ref, recovery: true, testOnly: true })
+        ["reject-conflicting-inputs"]).toBe(true);
+    for (const event of ["push", "status"])
+      expect(routes({ all: true, event, recovery: true, testOnly: true })["reject-conflicting-inputs"]).toBe(false);
   });
 
   it("binds every Buildkite writer consumer to its dedicated environment", () => {

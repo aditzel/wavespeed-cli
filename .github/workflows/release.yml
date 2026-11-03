@@ -21,6 +21,18 @@ permissions:
   contents: read
 
 jobs:
+  reject-conflicting-inputs:
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.test_only && inputs.publish_current_version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    permissions: {}
+    steps:
+      - name: Reject conflicting manual inputs
+        run: |
+          echo "::error::test_only and publish_current_version cannot both be true."
+          exit 1
+
   # Both modes are opt-in. Verify is read-only; publish requires commissioning.
   # Keep the existing routes until every release mode has native provider proof.
   plan-release:
@@ -122,7 +134,7 @@ jobs:
       contains(fromJSON('["verify","janus"]'), vars.JANUS_WAVESPEED_TEST_MODE) &&
       github.ref == 'refs/heads/main' &&
       ((github.event_name == 'push' && needs.plan-release.outputs.decision != 'release') ||
-       (github.event_name == 'workflow_dispatch' && inputs.test_only))
+       (github.event_name == 'workflow_dispatch' && inputs.test_only && !inputs.publish_current_version))
     runs-on: ubuntu-24.04
     environment: janus-wavespeed-release-tests
     timeout-minutes: 5

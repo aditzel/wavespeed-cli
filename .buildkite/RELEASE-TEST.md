@@ -14,8 +14,9 @@ exactly the original four stages, in order:
 3. `bun test`
 4. `./dist/index.js --help`
 
-It uses Bun 1.3.14 and the protected image's Node 22 baseline, with a
-15-minute execution allowance. The same supervisor as ordinary CI isolates
+It uses Bun 1.3.14 and the protected image's Node 22 baseline. The execution
+timeout is set by the protected deployed manifest; check that policy for the
+effective limit. The same supervisor as ordinary CI isolates
 HOME, temporary files, caches and environment; rejects API credentials, paid
 live tests and active dotenv/config files; preserves failures; and cleans up
 process groups on normal exit or cancellation. The release prerequisite has no
@@ -29,7 +30,8 @@ On `main`, run the **Release** workflow with `test_only=true` and
 producer/consumer policies first. This requests the existing versionless Janus
 test lane even when semantic-release would find unreleased commits. It skips
 release planning, legacy self-hosted tests, recovery and all publishers.
-Conflicting inputs are rejected before any Buildkite request. Branch and tag
+Conflicting inputs fail in a credential-free job even when Janus test mode is
+disabled, before any Buildkite request. Branch and tag
 requests are not admitted by this dispatcher.
 
 The dispatcher finishes after confirming its bounded build request. Acceptance
