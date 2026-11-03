@@ -1,6 +1,6 @@
 # Release prerequisite on Janus
 
-This prepares the `test` prerequisite of `.github/workflows/release.yml`.
+This describes the `test` prerequisite of `.github/workflows/release.yml`.
 Automatic Actions remain authoritative unless the
 [release verification mode](RELEASE-HANDOFF.md) is deliberately enabled.
 Nothing here publishes a package, creates a release, enables a provider pipeline,
@@ -14,14 +14,30 @@ exactly the original four stages, in order:
 3. `bun test`
 4. `./dist/index.js --help`
 
-It uses Bun 1.3.14 and the protected image's Node 22 baseline, with the original
-360-minute execution allowance. The same supervisor as ordinary CI isolates
+It uses Bun 1.3.14 and the protected image's Node 22 baseline, with a
+15-minute execution allowance. The same supervisor as ordinary CI isolates
 HOME, temporary files, caches and environment; rejects API credentials, paid
 live tests and active dotenv/config files; preserves failures; and cleans up
 process groups on normal exit or cancellation. The release prerequisite has no
 artifact-upload contract and does not add the ordinary lane's subcommand checks.
 
-## Inactive admission candidate
+## Explicit test-only run
+
+On `main`, run the **Release** workflow with `test_only=true` and
+`publish_current_version=false`. Set `JANUS_WAVESPEED_TEST_MODE` to `verify` or
+`janus` and commission the exact workflow and dispatcher blobs in the protected
+producer/consumer policies first. This requests the existing versionless Janus
+test lane even when semantic-release would find unreleased commits. It skips
+release planning, legacy self-hosted tests, recovery and all publishers.
+Conflicting inputs are rejected before any Buildkite request. Branch and tag
+requests are not admitted by this dispatcher.
+
+The dispatcher finishes after confirming its bounded build request. Acceptance
+also requires the matching native `release-test` job and the independent
+`verify-janus-test` status callback to pass. A green dispatch alone is not proof.
+No version, tag, npm publication or GitHub release is created by this option.
+
+## Admission candidate
 
 `release-test.project.json` is a review input for the Devops image-context
 generator, not a manifest that a checkout may load at runtime. Its proposed
@@ -34,9 +50,10 @@ original-repository `main` pushes; PR and tag routes are excluded. This ordinary
 branch policy does not authenticate a manual workflow request or authorize a
 publisher. It does not suppress `chore(release):` pushes: the original test
 job always runs, and only the later publisher has that suppression condition.
-The original workflow also permits manual runs on other branches; their trusted
-dispatch/source binding and recovery input remain a separate migration gate.
-This candidate therefore does not establish complete event parity.
+The explicit test-only option above is main-only. Other manual branch/tag runs
+retain their existing route; this candidate alone does not establish their
+event parity. The protected deployed manifest, rather than this historical
+candidate, determines the effective timeout and admitted events.
 
 ## Publishing and cutover gates
 

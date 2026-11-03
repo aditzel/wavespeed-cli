@@ -132,8 +132,34 @@ describe("bounded standalone Janus test dispatch", () => {
       expect(() => requestSchema({ ...wanted, event: "workflow_dispatch", ref })).toThrow();
   });
 
-  it("rejects manual requests before provider access", async () => {
-    for (const ref of ["refs/heads/main", "refs/heads/topic", "refs/tags/v1.3.5", "refs/tags/main"]) {
+  it("dispatches an explicit main test-only run with no publication or version authority", async () => {
+    const manualEnv = { ...env, GITHUB_EVENT_NAME: "workflow_dispatch" };
+    const manualEvent = { repository: event.repository, ref: "refs/heads/main",
+      inputs: { test_only: "true", publish_current_version: "false" } };
+    const request = requestFromContext(manualEnv, manualEvent);
+    expect(request).toEqual({ ...wanted, event: "workflow_dispatch" });
+    const writes: any[] = [];
+    const result = await dispatchTests(request, async (suffix: string, body?: any) => {
+      if (body) writes.push(body);
+      return { value: suffix.startsWith("?") ? [] : build(1, request), next: false };
+    });
+    expect(result.reused).toBe(false);
+    expect(writes).toEqual([{ commit, branch: "main", message: "Run Wavespeed Release tests for 123 attempt 2",
+      meta_data: { [requestKey]: JSON.stringify(request) } }]);
+    for (const inputs of [{}, { test_only: "false", publish_current_version: "false" },
+      { test_only: true, publish_current_version: false }, { test_only: "true" },
+      { test_only: "true", publish_current_version: "true" },
+      { test_only: "true", publish_current_version: "no" }])
+      expect(() => requestFromContext(manualEnv, { ...manualEvent, inputs })).toThrow("exclusive test-only");
+    for (const ref of ["main", "refs/heads/topic", "refs/tags/main"])
+      expect(() => requestFromContext(manualEnv, { ...manualEvent, ref })).toThrow();
+    for (const change of [{ JANUS_WAVESPEED_TEST_MODE: "" }, { GITHUB_REPOSITORY: "outsider/fork" },
+      { GITHUB_REF: "refs/heads/topic" }, { GITHUB_EVENT_NAME: "pull_request" }])
+      expect(() => requestFromContext({ ...manualEnv, ...change }, manualEvent)).toThrow();
+  });
+
+  it("rejects manual branch and tag requests before provider access", async () => {
+    for (const ref of ["refs/heads/topic", "refs/tags/v1.3.5", "refs/tags/main"]) {
       let calls = 0;
       await expect(dispatchTests({ ...wanted, event: "workflow_dispatch", ref }, async () => {
         calls++;

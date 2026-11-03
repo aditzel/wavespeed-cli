@@ -35,7 +35,7 @@ export function requestSchema(value) {
 export function requestFromContext(env, event) {
   requireValue(env.GITHUB_ACTIONS === "true" && env.GITHUB_REPOSITORY === repository &&
     env.GITHUB_REPOSITORY_ID === "1079467744" && env.GITHUB_JOB === "request-janus-test" && !env.GITHUB_HEAD_REF &&
-    env.GITHUB_EVENT_NAME === "push" && env.GITHUB_REF === "refs/heads/main" &&
+    ["push", "workflow_dispatch"].includes(env.GITHUB_EVENT_NAME) && env.GITHUB_REF === "refs/heads/main" &&
     ["verify", "janus"].includes(env.JANUS_WAVESPEED_TEST_MODE), "Unexpected test dispatch context");
   requireValue(env.GITHUB_WORKFLOW_SHA === env.GITHUB_SHA &&
     env.GITHUB_WORKFLOW_REF === `${repository}/.github/workflows/release.yml@${env.GITHUB_REF}`,
@@ -47,6 +47,9 @@ export function requestFromContext(env, event) {
   if (env.GITHUB_EVENT_NAME === "push") {
     requireValue(event.ref === "refs/heads/main" && event.after === env.GITHUB_SHA && !event.deleted,
       "Push source changed");
+  } else {
+    requireValue(event.ref === "refs/heads/main" && event.inputs?.test_only === "true" &&
+      event.inputs.publish_current_version === "false", "Expected exclusive test-only dispatch");
   }
   return requestSchema({schemaVersion: 1, repositoryId: 1079467744, workflowId: 211956153,
     runId: Number(env.GITHUB_RUN_ID), runAttempt: Number(env.GITHUB_RUN_ATTEMPT),
@@ -110,8 +113,7 @@ function buildIdentity(build, wanted) {
 
 export async function dispatchTests(wanted, api) {
   requestSchema(wanted);
-  requireValue(wanted.event === "push" && wanted.ref === "refs/heads/main",
-    "Manual test requests use the separately commissioned Buildkite control");
+  requireValue(wanted.ref === "refs/heads/main", "Test dispatch requires the main branch");
   let candidates = [], complete = false;
   const ids = new Set(), numbers = new Set();
   for (let page = 1; page <= 5; page++) {

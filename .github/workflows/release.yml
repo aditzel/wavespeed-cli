@@ -6,6 +6,11 @@ on:
   status:
   workflow_dispatch:
     inputs:
+      test_only:
+        description: "Run only the Release tests on Janus, without planning or publishing a release"
+        required: false
+        default: false
+        type: boolean
       publish_current_version:
         description: "Publish package.json version if it is tagged but missing from npm"
         required: false
@@ -24,7 +29,7 @@ jobs:
       contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) &&
       github.ref == 'refs/heads/main' &&
       ((github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(release):')) ||
-       (github.event_name == 'workflow_dispatch' && !inputs.publish_current_version))
+       (github.event_name == 'workflow_dispatch' && !inputs.test_only && !inputs.publish_current_version))
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -84,7 +89,7 @@ jobs:
       contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) &&
       github.ref == 'refs/heads/main' && needs.plan-release.outputs.decision == 'release' &&
       ((github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(release):')) ||
-       (github.event_name == 'workflow_dispatch' && !inputs.publish_current_version))
+       (github.event_name == 'workflow_dispatch' && !inputs.test_only && !inputs.publish_current_version))
     runs-on: ubuntu-24.04
     environment: janus-wavespeed-release-build
     timeout-minutes: 5
@@ -115,8 +120,9 @@ jobs:
     if: >-
       !cancelled() && github.repository == 'aditzel/wavespeed-cli' &&
       contains(fromJSON('["verify","janus"]'), vars.JANUS_WAVESPEED_TEST_MODE) &&
-      github.event_name == 'push' && github.ref == 'refs/heads/main' &&
-      needs.plan-release.outputs.decision != 'release'
+      github.ref == 'refs/heads/main' &&
+      ((github.event_name == 'push' && needs.plan-release.outputs.decision != 'release') ||
+       (github.event_name == 'workflow_dispatch' && inputs.test_only))
     runs-on: ubuntu-24.04
     environment: janus-wavespeed-release-tests
     timeout-minutes: 5
@@ -336,7 +342,7 @@ jobs:
   request-recovery-verify:
     if: >-
       github.repository == 'aditzel/wavespeed-cli' && github.event_name == 'workflow_dispatch' &&
-      github.ref == 'refs/heads/main' && inputs.publish_current_version &&
+      github.ref == 'refs/heads/main' && !inputs.test_only && inputs.publish_current_version &&
       contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) &&
       vars.JANUS_WAVESPEED_RECOVERY_MODE == 'verify'
     runs-on: ubuntu-24.04
@@ -467,7 +473,7 @@ jobs:
   request-recovery-publish:
     if: >-
       github.repository == 'aditzel/wavespeed-cli' && github.event_name == 'workflow_dispatch' &&
-      github.ref == 'refs/heads/main' && inputs.publish_current_version &&
+      github.ref == 'refs/heads/main' && !inputs.test_only && inputs.publish_current_version &&
       contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) &&
       vars.JANUS_WAVESPEED_RECOVERY_MODE == 'publish'
     runs-on: ubuntu-24.04
@@ -603,6 +609,7 @@ jobs:
     # Its opt-in route requires the versioned release configuration too.
     if: >-
       !cancelled() && github.event_name != 'status' && needs.plan-release.outputs.decision != 'release' &&
+      !(github.event_name == 'workflow_dispatch' && inputs.test_only) &&
       (github.event_name == 'workflow_dispatch' || vars.JANUS_WAVESPEED_TEST_MODE != 'janus' ||
        !contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) || inputs.publish_current_version) &&
       !(github.repository == 'aditzel/wavespeed-cli' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_current_version && contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) && contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RECOVERY_MODE))
@@ -641,6 +648,7 @@ jobs:
       id-token: write
     if: >-
       !cancelled() && needs.test.result == 'success' &&
+      !(github.event_name == 'workflow_dispatch' && inputs.test_only) &&
       github.event_name != 'status' && github.ref == 'refs/heads/main' &&
       (!contains(fromJSON('["verify","publish"]'), vars.JANUS_WAVESPEED_RELEASE_MODE) || inputs.publish_current_version) &&
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):')) &&

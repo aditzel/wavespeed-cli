@@ -9,7 +9,7 @@ const jobs = workflow.jobs;
 
 // Evaluate the actual expressions in this workflow for controlled boolean/string
 // fixtures. actionlint separately checks GitHub's syntax/context availability.
-function routes({ mode = "", testMode = "", recoveryMode = "", all = false, event = "push", ref = "refs/heads/main", recovery = false,
+function routes({ mode = "", testMode = "", recoveryMode = "", all = false, event = "push", ref = "refs/heads/main", recovery = false, testOnly = false,
   message = "feat: change", decision = "", planResult = "skipped", testResult = "success", repo = "aditzel/wavespeed-cli",
   status = "success", context = "buildkite/wavespeed-cli-release-build", stale = false, canceled = false } = {}) {
   const github = { repository: repo, event_name: event, ref, sha: "a".repeat(40),
@@ -21,7 +21,7 @@ function routes({ mode = "", testMode = "", recoveryMode = "", all = false, even
     if (dependency && !expression.includes("cancelled(") && needs[dependency].result !== "success") return false;
     return !!new Function("github", "vars", "inputs", "needs", "startsWith", "cancelled", "contains", "fromJSON",
       `return (${expression});`)(github, { JANUS_WAVESPEED_RELEASE_MODE: mode, JANUS_WAVESPEED_TEST_MODE: testMode, JANUS_WAVESPEED_RECOVERY_MODE: recoveryMode },
-      { publish_current_version: recovery }, needs, (value: string, prefix: string) => value.startsWith(prefix), () => canceled, (items: string[], item: string) => items.includes(item), JSON.parse);
+      { publish_current_version: recovery, test_only: testOnly }, needs, (value: string, prefix: string) => value.startsWith(prefix), () => canceled, (items: string[], item: string) => items.includes(item), JSON.parse);
   };
   return Object.fromEntries(["plan-release", "request-janus-release", "verify-release", "publish-release", "request-janus-test", "verify-janus-test", "test", "release"]
     .concat(all ? ["request-recovery-verify", "request-recovery-publish", "verify-recovery", "publish-recovery"] : [])
@@ -57,6 +57,26 @@ describe("release workflow routing", () => {
         { event: "workflow_dispatch", recovery: true }, { planResult: "failure" },
         { planResult: "cancelled" }, { planResult: "skipped" }])
         expect(routes({ ...planned, ...change })["request-janus-release"]).toBe(false);
+    }
+  });
+
+  it("runs explicit test-only dispatches without planning, recovery or either publisher", () => {
+    expect(workflow.on.workflow_dispatch.inputs.test_only).toMatchObject({ type: "boolean", default: false });
+    for (const mode of ["", "verify", "publish"])
+      for (const testMode of ["", "verify", "janus"])
+        for (const recoveryMode of ["", "verify", "publish"])
+          for (const recovery of [false, true]) {
+            const routed = routes({ mode, testMode, recoveryMode, recovery, testOnly: true,
+              event: "workflow_dispatch", all: true });
+            expect(Object.entries(routed).filter(([, enabled]) => enabled).map(([name]) => name))
+              .toEqual(testMode ? ["request-janus-test"] : []);
+          }
+    // Conflicting inputs reach the test dispatcher, which rejects them before
+    // provider access, never a publisher or the legacy runner.
+    for (const change of [{ ref: "refs/heads/topic" }, { ref: "refs/tags/main" },
+      { repo: "outsider/fork" }, { canceled: true }]) {
+      expect(Object.values(routes({ mode: "publish", testMode: "janus", recoveryMode: "publish",
+        event: "workflow_dispatch", testOnly: true, all: true, ...change }))).not.toContain(true);
     }
   });
 
